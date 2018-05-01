@@ -17,7 +17,7 @@
 #include <cmath>
 #include <vector>
 #include <openrct2/common.h>
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <openrct2/config/Config.h>
 #include <openrct2/drawing/IDrawingEngine.h>
 #include <openrct2/drawing/X8DrawingEngine.h>
@@ -69,8 +69,14 @@ public:
 
     ~HardwareDisplayDrawingEngine() override
     {
-        SDL_DestroyTexture(_screenTexture);
-        SDL_DestroyTexture(_scaledScreenTexture);
+        if (_screenTexture != nullptr)
+        {
+            SDL_DestroyTexture(_screenTexture);
+        }
+        if (_scaledScreenTexture != nullptr)
+        {
+            SDL_DestroyTexture(_scaledScreenTexture);
+        }
         SDL_FreeFormat(_screenTextureFormat);
         SDL_DestroyRenderer(_sdlRenderer);
     }
@@ -93,7 +99,10 @@ public:
 
     void Resize(uint32 width, uint32 height) override
     {
-        SDL_DestroyTexture(_screenTexture);
+        if (_screenTexture != nullptr)
+        {
+            SDL_DestroyTexture(_screenTexture);
+        }
         SDL_FreeFormat(_screenTextureFormat);
 
         SDL_RendererInfo rendererInfo = {};
@@ -128,7 +137,10 @@ public:
 
         if (smoothNN)
         {
-            SDL_DestroyTexture(_scaledScreenTexture);
+            if (_scaledScreenTexture != nullptr)
+            {
+                SDL_DestroyTexture(_scaledScreenTexture);
+            }
 
             char scaleQualityBuffer[4];
             snprintf(scaleQualityBuffer, sizeof(scaleQualityBuffer), "%u", scaleQuality);

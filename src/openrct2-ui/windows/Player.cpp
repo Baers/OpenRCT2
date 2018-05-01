@@ -26,6 +26,8 @@
 #include <openrct2-ui/interface/Widget.h>
 #include <openrct2/util/Util.h>
 #include <openrct2-ui/interface/Dropdown.h>
+#include <openrct2/interface/Colour.h>
+#include <openrct2/drawing/Drawing.h>
 
 enum WINDOW_PLAYER_PAGE {
     WINDOW_PLAYER_PAGE_OVERVIEW,
@@ -521,7 +523,7 @@ void window_player_statistics_paint(rct_window *w, rct_drawpixelinfo *dpi)
     set_format_arg(0, uint32, network_get_player_commands_ran(player));
     gfx_draw_string_left(dpi, STR_COMMANDS_RAN, gCommonFormatArgs, COLOUR_BLACK, x, y);
 
-    y += 10;
+    y += LIST_ROW_HEIGHT;
 
     set_format_arg(0, uint32, network_get_player_money_spent(player));
     gfx_draw_string_left(dpi, STR_MONEY_SPENT, gCommonFormatArgs, COLOUR_BLACK, x, y);

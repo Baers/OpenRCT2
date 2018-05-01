@@ -16,15 +16,16 @@
 
 #pragma warning(disable : 4706) // assignment within conditional expression
 
+#include <cmath>
+#include <cstring>
 #include <jansson.h>
 #include "CmdlineSprite.h"
 #include "drawing/Drawing.h"
 #include "Imaging.h"
-#include "localisation/Localisation.h"
+#include "localisation/Language.h"
 #include "OpenRCT2.h"
 #include "platform/platform.h"
 #include "util/Util.h"
-#include "png.h"
 
 #define MODE_DEFAULT 0
 #define MODE_CLOSEST 1
@@ -229,7 +230,7 @@ static bool sprite_file_export(sint32 spriteIndex, const char *outPath)
     if (spriteHeader->flags & G1_FLAG_RLE_COMPRESSION) {
         gfx_rle_sprite_to_buffer(spriteHeader->offset, pixels, (uint8*)spriteFilePalette, &dpi, IMAGE_TYPE_DEFAULT, 0, spriteHeader->height, 0, spriteHeader->width);
     } else {
-        gfx_bmp_sprite_to_buffer((uint8*)spriteFilePalette, nullptr, spriteHeader->offset, pixels, spriteHeader, &dpi, spriteHeader->height, spriteHeader->width, IMAGE_TYPE_DEFAULT);
+        gfx_bmp_sprite_to_buffer((uint8*)spriteFilePalette, spriteHeader->offset, pixels, spriteHeader, &dpi, spriteHeader->height, spriteHeader->width, IMAGE_TYPE_DEFAULT);
     }
 
     if (image_io_png_write(&dpi, (rct_palette*)spriteFilePalette, outPath)) {
@@ -419,7 +420,7 @@ static bool sprite_file_import(const char *path, sint16 x_offset, sint16 y_offse
 
                             if (x + 1 < width)
                             {
-                                if (!is_transparent_pixel(rgbaSrc + 4 * (width - 1)) && is_changable_pixel(get_palette_index(rgbaSrc + 4 * (width + 1))))
+                                if (!is_transparent_pixel(rgbaSrc + 4 * (width + 1)) && is_changable_pixel(get_palette_index(rgbaSrc + 4 * (width + 1))))
                                 {
                                     // Bottom right
                                     rgbaSrc[4 * (width + 1)] += dr * 1 / 16;
@@ -614,7 +615,7 @@ sint32 cmdline_for_sprite(const char **argv, sint32 argc)
         }
 
         sint32 maxIndex = (sint32)spriteFileHeader.num_entries;
-        sint32 numbers = (sint32)floor(log(maxIndex));
+        sint32 numbers = (sint32)std::floor(std::log(maxIndex));
         size_t pathLen = strlen(outputPath);
 
         if (pathLen >= (size_t)(MAX_PATH - numbers - 5)) {

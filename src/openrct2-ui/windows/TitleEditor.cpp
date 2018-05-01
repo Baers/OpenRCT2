@@ -19,6 +19,7 @@
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/ParkImporter.h>
 #include <openrct2/scenario/ScenarioSources.h>
+#include <openrct2/scenario/ScenarioRepository.h>
 #include <openrct2/title/TitleScreen.h>
 #include <openrct2/title/TitleSequence.h>
 #include <openrct2/title/TitleSequenceManager.h>
@@ -34,6 +35,7 @@
 #include <openrct2/sprites.h>
 #include <openrct2/util/Util.h>
 #include <openrct2-ui/interface/Dropdown.h>
+#include <openrct2/scenario/Scenario.h>
 
 enum WINDOW_TITLE_EDITOR_TAB {
     WINDOW_TITLE_EDITOR_TAB_PRESETS,

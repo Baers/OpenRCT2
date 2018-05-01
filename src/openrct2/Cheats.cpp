@@ -14,15 +14,13 @@
  *****************************************************************************/
 #pragma endregion
 
+#include "actions/ParkSetLoanAction.hpp"
 #include "Cheats.h"
 #include "config/Config.h"
-#include "Editor.h"
-#include "Game.h"
-#include "interface/Window.h"
 #include "localisation/Localisation.h"
-#include "management/Finance.h"
 #include "network/network.h"
-#include "ride/Station.h"
+#include "ride/Ride.h"
+#include "scenario/Scenario.h"
 #include "util/Util.h"
 #include "world/Climate.h"
 #include "world/Footpath.h"
@@ -262,9 +260,8 @@ static void cheat_clear_loan()
     cheat_add_money(gBankLoan);
 
     // Then pay the loan
-    money32 newLoan;
-    newLoan = MONEY(0, 00);
-    game_do_command(0, GAME_COMMAND_FLAG_APPLY, 0, newLoan, GAME_COMMAND_SET_CURRENT_LOAN, 0, 0);
+    auto gameAction = ParkSetLoanAction(MONEY(0, 00));
+    GameActions::Execute(&gameAction);
 }
 
 static void cheat_generate_guests(sint32 count)
@@ -355,15 +352,6 @@ static void cheat_remove_all_guests()
     rct_peep *peep;
     rct_vehicle *vehicle;
     uint16 spriteIndex, nextSpriteIndex;
-
-    for (spriteIndex = gSpriteListHead[SPRITE_LIST_PEEP]; spriteIndex != SPRITE_INDEX_NULL; spriteIndex = nextSpriteIndex) {
-        peep = &(get_sprite(spriteIndex)->peep);
-        nextSpriteIndex = peep->next;
-        if (peep->type == PEEP_TYPE_GUEST) {
-            peep_remove(peep);
-        }
-    }
-
     sint32 rideIndex;
     Ride *ride;
 
@@ -383,17 +371,34 @@ static void cheat_remove_all_guests()
             while (spriteIndex != SPRITE_INDEX_NULL)
             {
                 vehicle = GET_VEHICLE(spriteIndex);
-
-                vehicle->num_peeps = 0;
-                vehicle->next_free_seat = 0;
+                for (size_t i = 0, offset = 0; i < vehicle->num_peeps; i++) 
+                {
+                    while (vehicle->peep[i + offset] == SPRITE_INDEX_NULL)
+                    {
+                        offset++;
+                    }
+                    peep = GET_PEEP(vehicle->peep[i + offset]);
+                    vehicle->mass -= peep->mass;
+                }
 
                 for (auto &peepInTrainIndex : vehicle->peep)
                 {
                     peepInTrainIndex = SPRITE_INDEX_NULL;
                 }
 
+                vehicle->num_peeps = 0;
+                vehicle->next_free_seat = 0;
+
                 spriteIndex = vehicle->next_vehicle_on_train;
             }
+        }
+    }
+
+    for (spriteIndex = gSpriteListHead[SPRITE_LIST_PEEP]; spriteIndex != SPRITE_INDEX_NULL; spriteIndex = nextSpriteIndex) {
+        peep = &(get_sprite(spriteIndex)->peep);
+        nextSpriteIndex = peep->next;
+        if (peep->type == PEEP_TYPE_GUEST) {
+            peep_remove(peep);
         }
     }
 
@@ -407,16 +412,6 @@ static void cheat_explode_guests()
     rct_peep *peep;
 
     FOR_ALL_GUESTS(sprite_index, peep) {
-        // To prevent blowing up peeps that will break
-        // ride vehicle logic.
-        if (peep->state == PEEP_STATE_ENTERING_RIDE ||
-            peep->state == PEEP_STATE_QUEUING_FRONT ||
-            peep->state == PEEP_STATE_LEAVING_RIDE ||
-            peep->state == PEEP_STATE_ON_RIDE ||
-            peep->state == PEEP_STATE_QUEUING) {
-            continue;
-        }
-
         if (scenario_rand_max(6) == 0) {
             peep->peep_flags |= PEEP_FLAGS_EXPLODE;
         }
@@ -440,7 +435,7 @@ static void cheat_own_all_land()
     const sint32 max = gMapSizeUnits - 32;
 
     for (CoordsXY coords = {min, min}; coords.y <= max; coords.y += 32) {
-        for (; coords.x <= max; coords.x += 32) {
+        for (coords.x = min; coords.x <= max; coords.x += 32) {
             rct_tile_element * surfaceElement = map_get_surface_element_at(coords);
 
             // Ignore already owned tiles.
@@ -478,7 +473,14 @@ static void cheat_own_all_land()
 
 #pragma endregion
 
-void game_command_cheat(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_cheat(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     sint32 cheat = *ecx;
     if (*ebx & GAME_COMMAND_FLAG_APPLY)

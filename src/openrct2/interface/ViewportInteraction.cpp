@@ -14,7 +14,6 @@
  *****************************************************************************/
 #pragma endregion
 
-#include "../Cheats.h"
 #include "../core/Math.hpp"
 #include "../Editor.h"
 #include "../Game.h"
@@ -32,6 +31,7 @@
 #include "../world/Scenery.h"
 #include "../world/LargeScenery.h"
 #include "../world/Sprite.h"
+#include "../world/Park.h"
 #include "Viewport.h"
 #include "Window_internal.h"
 #include "../Context.h"
@@ -451,7 +451,7 @@ static void viewport_interaction_remove_footpath(rct_tile_element *tileElement, 
     do {
         if (tile_element_get_type(tileElement2) == TILE_ELEMENT_TYPE_PATH && tileElement2->base_height == z) {
             gGameCommandErrorTitle = STR_CANT_REMOVE_FOOTPATH_FROM_HERE;
-            footpath_remove(x, y, z, 1);
+            footpath_remove(x, y, z, GAME_COMMAND_FLAG_APPLY);
             break;
         }
     } while (!tile_element_is_last_for_tile(tileElement2++));

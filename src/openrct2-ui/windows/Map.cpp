@@ -1,4 +1,4 @@
-#pragma region Copyright (c) 2014-2017 OpenRCT2 Developers
+#pragma region Copyright (c) 2014-2018 OpenRCT2 Developers
 /*****************************************************************************
  * OpenRCT2, an open source clone of Roller Coaster Tycoon 2.
  *
@@ -29,16 +29,21 @@
 #include <openrct2/world/Entrance.h>
 #include <openrct2/world/Footpath.h>
 #include <openrct2/world/Scenery.h>
+#include <openrct2/world/Sprite.h>
 #include <openrct2-ui/interface/LandTool.h>
 #include <openrct2-ui/interface/Viewport.h>
 #include <openrct2-ui/interface/Widget.h>
 #include <openrct2-ui/windows/Window.h>
 
-#define MAP_COLOUR_2(colourA, colourB) ((colourA << 8) | colourB)
+#define MAP_COLOUR_2(colourA, colourB) (((colourA) << 8) | (colourB))
 #define MAP_COLOUR(colour) MAP_COLOUR_2(colour, colour)
-#define FALLBACK_COLOUR(colour) ((colour << 24) | colour << 16)
+#define MAP_COLOUR_UNOWNED(colour) (PALETTE_INDEX_10 | ((colour) & 0xFF00))
 
 #define MAP_WINDOW_MAP_SIZE (MAXIMUM_MAP_SIZE_TECHNICAL * 2)
+
+// Some functions manipulate coordinates on the map. These are the coordinates of the pixels in the
+// minimap. In order to distinguish those from actual coordinates, we use a separate name.
+using MapCoordsXY = TileCoordsXY;
 
 enum {
     PAGE_PEEPS,
@@ -102,10 +107,10 @@ static rct_widget window_map_widgets[] = {
 // used in transforming viewport view coordinates to minimap coordinates
 // rct2: 0x00981BBC
 static constexpr const LocationXY16 MiniMapOffsets[] = {
-    { 256 - 8,   0 },
-    { 512 - 8, 256 },
-    { 256 - 8, 512 },
-    {   0 - 8, 256 }
+    {     MAXIMUM_MAP_SIZE_TECHNICAL - 8,                              0 },
+    { 2 * MAXIMUM_MAP_SIZE_TECHNICAL - 8,     MAXIMUM_MAP_SIZE_TECHNICAL },
+    {     MAXIMUM_MAP_SIZE_TECHNICAL - 8, 2 * MAXIMUM_MAP_SIZE_TECHNICAL },
+    {                              0 - 8,     MAXIMUM_MAP_SIZE_TECHNICAL }
 };
 
 /** rct2: 0x00981BCC */
@@ -177,6 +182,8 @@ static uint32 _currentLine;
 /** rct2: 0x00F1AD68 */
 static std::vector<uint8> _mapImageData;
 
+static uint16 _landRightsToolSize;
+
 static void window_map_init_map();
 static void window_map_centre_on_view_point();
 static void window_map_show_default_scenario_editor_buttons(rct_window *w);
@@ -197,7 +204,7 @@ static void map_window_increase_map_size();
 static void map_window_decrease_map_size();
 static void map_window_set_pixels(rct_window *w);
 
-static void map_window_screen_to_map(sint32 screenX, sint32 screenY, sint32 *mapX, sint32 *mapY);
+static CoordsXY map_window_screen_to_map(sint32 screenX, sint32 screenY);
 
 /**
 *
@@ -260,8 +267,8 @@ rct_window * window_map_open()
     gWindowSceneryRotation = 0;
     window_map_centre_on_view_point();
 
-    // Reset land tool size
-    gLandToolSize = 1;
+    // Reset land rights tool size
+    _landRightsToolSize = 1;
 
     return w;
 }
@@ -311,7 +318,7 @@ static void window_map_mouseup(rct_window *w, rct_widgetindex widgetIndex)
             break;
         _activeTool = 2;
         // Prevent mountain tool size.
-        gLandToolSize = Math::Max<uint16>(MINIMUM_TOOL_SIZE, gLandToolSize);
+        _landRightsToolSize = Math::Max<uint16>(MINIMUM_TOOL_SIZE, _landRightsToolSize);
         show_gridlines();
         show_land_rights();
         show_construction_rights();
@@ -419,14 +426,14 @@ static void window_map_mousedown(rct_window *w, rct_widgetindex widgetIndex, rct
         map_window_decrease_map_size();
         break;
     case WIDX_LAND_TOOL_SMALLER:
-        // Decrement land ownership tool size
-        gLandToolSize = Math::Max(MINIMUM_TOOL_SIZE, gLandToolSize - 1);
+        // Decrement land rights tool size
+        _landRightsToolSize = Math::Max(MINIMUM_TOOL_SIZE, _landRightsToolSize - 1);
 
         window_invalidate(w);
         break;
     case WIDX_LAND_TOOL_LARGER:
-        // Increment land ownership tool size
-        gLandToolSize = Math::Min(MAXIMUM_TOOL_SIZE, gLandToolSize + 1);
+        // Increment land rights tool size
+        _landRightsToolSize = Math::Min(MAXIMUM_TOOL_SIZE, _landRightsToolSize + 1);
 
         window_invalidate(w);
         break;
@@ -562,8 +569,8 @@ static void window_map_scrollgetsize(rct_window *w, sint32 scrollIndex, sint32 *
 {
     window_map_invalidate(w);
 
-    *width = 512;
-    *height = 512;
+    *width = MAP_WINDOW_MAP_SIZE;
+    *height = MAP_WINDOW_MAP_SIZE;
 }
 
 /**
@@ -572,15 +579,12 @@ static void window_map_scrollgetsize(rct_window *w, sint32 scrollIndex, sint32 *
  */
 static void window_map_scrollmousedown(rct_window *w, sint32 scrollIndex, sint32 x, sint32 y)
 {
-    sint32 mapX = 0, mapY = 0, mapZ = 0;
-    rct_window *mainWindow;
+    CoordsXY c = map_window_screen_to_map(x, y);
+    sint32 mapX = Math::Clamp(0, c.x, MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1);
+    sint32 mapY = Math::Clamp(0, c.y, MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1);
+    sint32 mapZ = tile_element_height(x, y);
 
-    map_window_screen_to_map(x, y, &mapX, &mapY);
-    mapX = Math::Clamp(0, mapX, 8191);
-    mapY = Math::Clamp(0, mapY, 8191);
-    mapZ = tile_element_height(x, y);
-
-    mainWindow = window_get_main();
+    rct_window * mainWindow = window_get_main();
     if (mainWindow != nullptr) {
         window_scroll_to_location(mainWindow, mapX, mapY, mapZ);
     }
@@ -614,9 +618,9 @@ static void window_map_scrollmousedown(rct_window *w, sint32 scrollIndex, sint32
         );
     } else if (widget_is_active_tool(w, WIDX_SET_LAND_RIGHTS)) {
         // Set land rights
-        sint32 landToolSize = Math::Max<sint32>(1, gLandToolSize);
-        sint32 size = (landToolSize * 32) - 32;
-        sint32 radius = (landToolSize * 16) - 16;
+        sint32 landRightsToolSize = Math::Max<sint32>(1, _landRightsToolSize);
+        sint32 size = (landRightsToolSize * 32) - 32;
+        sint32 radius = (landRightsToolSize * 16) - 16;
         mapX = (mapX - radius) & 0xFFE0;
         mapY = (mapY - radius) & 0xFFE0;
 
@@ -655,7 +659,7 @@ static void window_map_textinput(rct_window *w, rct_widgetindex widgetIndex, cha
         size = strtol(text, &end, 10);
         if (*end == '\0') {
             size = Math::Clamp(MINIMUM_TOOL_SIZE, size, MAXIMUM_TOOL_SIZE);
-            gLandToolSize = size;
+            _landRightsToolSize = size;
             window_invalidate(w);
         }
         break;
@@ -812,7 +816,7 @@ static void window_map_invalidate(rct_window *w)
                 for (i = 0; i < 4; i++)
                     w->widgets[WIDX_LAND_OWNED_CHECKBOX + i].type = WWT_CHECKBOX;
 
-                w->widgets[WIDX_LAND_TOOL].image = land_tool_size_to_sprite_index(gLandToolSize);
+                w->widgets[WIDX_LAND_TOOL].image = land_tool_size_to_sprite_index(_landRightsToolSize);
             }
         } else {
             // if no tool is active: show the default scenario editor buttons
@@ -834,8 +838,8 @@ static void window_map_paint(rct_window *w, rct_drawpixelinfo *dpi)
     sint32 y = w->y + (window_map_widgets[WIDX_LAND_TOOL].top + window_map_widgets[WIDX_LAND_TOOL].bottom) / 2;
 
     // Draw land tool size
-    if (widget_is_active_tool(w, WIDX_SET_LAND_RIGHTS) && gLandToolSize > MAX_TOOL_SIZE_WITH_SPRITE) {
-        gfx_draw_string_centred(dpi, STR_LAND_TOOL_SIZE_VALUE, x, y - 2, COLOUR_BLACK, &gLandToolSize);
+    if (widget_is_active_tool(w, WIDX_SET_LAND_RIGHTS) && _landRightsToolSize > MAX_TOOL_SIZE_WITH_SPRITE) {
+        gfx_draw_string_centred(dpi, STR_LAND_TOOL_SIZE_VALUE, x, y - 2, COLOUR_BLACK, &_landRightsToolSize);
     }
     y = w->y + window_map_widgets[WIDX_LAND_TOOL].bottom + 5;
 
@@ -1029,36 +1033,30 @@ static void window_map_draw_tab_images(rct_window *w, rct_drawpixelinfo *dpi)
  *
  * part of window_map_paint_peep_overlay and window_map_paint_train_overlay
  */
-static void window_map_transform_to_map_coords(sint16 *left, sint16 *top)
+static MapCoordsXY window_map_transform_to_map_coords(CoordsXY c)
 {
-    sint16 x = *left, y = *top;
-    sint16 temp;
+    sint32 x = c.x, y = c.y;
 
     switch (get_current_rotation()) {
     case 3:
-        temp = x;
-        x = y;
-        y = temp;
-        x = 0x1FFF - x;
+        std::swap(x, y);
+        x = MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - x;
         break;
     case 2:
-        x = 0x1FFF - x;
-        y = 0x1FFF - y;
+        x = MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - x;
+        y = MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - y;
         break;
     case 1:
-        temp = x;
-        x = y;
-        y = temp;
-        y = 0x1FFF - y;
+        std::swap(x, y);
+        y = MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - y;
         break;
     case 0:
         break;
     }
-    x >>= 5;
-    y >>= 5;
+    x /= 32;
+    y /= 32;
 
-    *left = -x + y + 0xF8;
-    *top = x + y - 8;
+    return {-x + y + MAXIMUM_MAP_SIZE_TECHNICAL - 8, x + y - 8};
 }
 
 /**
@@ -1070,22 +1068,18 @@ static void window_map_paint_peep_overlay(rct_drawpixelinfo *dpi)
     rct_peep *peep;
     uint16 spriteIndex;
 
-    sint16 left, right, bottom, top;
-    sint16 colour;
-
     FOR_ALL_PEEPS(spriteIndex, peep) {
-        left = peep->x;
-        top = peep->y;
-
-        if (left == LOCATION_NULL)
+        if (peep->x == LOCATION_NULL)
             continue;
 
-        window_map_transform_to_map_coords(&left, &top);
+        MapCoordsXY c = window_map_transform_to_map_coords({peep->x, peep->y});
+        sint16 left = c.x;
+        sint16 top = c.y;
 
-        right = left;
-        bottom = top;
+        sint16 right = left;
+        sint16 bottom = top;
 
-        colour = PALETTE_INDEX_20;
+        sint16 colour = PALETTE_INDEX_20;
 
         if (sprite_get_flashing((rct_sprite*)peep)) {
             if (peep->type == PEEP_TYPE_STAFF) {
@@ -1117,25 +1111,16 @@ static void window_map_paint_train_overlay(rct_drawpixelinfo *dpi)
     rct_vehicle *train, *vehicle;
     uint16 train_index, vehicle_index;
 
-    sint16 left, top, right, bottom;
-
     for (train_index = gSpriteListHead[SPRITE_LIST_TRAIN]; train_index != SPRITE_INDEX_NULL; train_index = train->next) {
         train = GET_VEHICLE(train_index);
         for (vehicle_index = train_index; vehicle_index != SPRITE_INDEX_NULL; vehicle_index = vehicle->next_vehicle_on_train) {
             vehicle = GET_VEHICLE(vehicle_index);
-
-            left = vehicle->x;
-            top = vehicle->y;
-
-            if (left == LOCATION_NULL)
+            if (vehicle->x == LOCATION_NULL)
                 continue;
 
-            window_map_transform_to_map_coords(&left, &top);
+            MapCoordsXY c = window_map_transform_to_map_coords({vehicle->x, vehicle->y});
 
-            right = left;
-            bottom = top;
-
-            gfx_fill_rect(dpi, left, top, right, bottom, PALETTE_INDEX_171);
+            gfx_fill_rect(dpi, c.x, c.y, c.x, c.y, PALETTE_INDEX_171);
         }
     }
 }
@@ -1197,12 +1182,12 @@ static void window_map_set_land_rights_tool_update(sint32 x, sint32 y)
     gMapSelectFlags |= MAP_SELECT_FLAG_ENABLE;
     gMapSelectType = MAP_SELECT_TYPE_FULL;
 
-    sint32 landToolSize = gLandToolSize;
-    if (landToolSize == 0)
-        landToolSize = 1;
+    sint32 landRightsToolSize = _landRightsToolSize;
+    if (landRightsToolSize == 0)
+        landRightsToolSize = 1;
 
-    sint32 size = (landToolSize * 32) - 32;
-    sint32 radius = (landToolSize * 16) - 16;
+    sint32 size = (landRightsToolSize * 32) - 32;
+    sint32 radius = (landRightsToolSize * 16) - 16;
     mapX = (mapX - radius) & 0xFFE0;
     mapY = (mapY - radius) & 0xFFE0;
     gMapSelectPositionA.x = mapX;
@@ -1571,18 +1556,15 @@ static constexpr const uint8 RideColourKey[] = {
     COLOUR_KEY_RIDE,                //
 };
 
-static uint16 map_window_get_pixel_colour_peep(sint32 x, sint32 y)
+static uint16 map_window_get_pixel_colour_peep(CoordsXY c)
 {
-    rct_tile_element *tileElement;
-    uint16 colour;
-
-    tileElement = map_get_surface_element_at(x >> 5, y >> 5);
-    colour = TerrainColour[tile_element_get_terrain(tileElement)];
+    rct_tile_element * tileElement = map_get_surface_element_at(c);
+    uint16 colour = TerrainColour[tile_element_get_terrain(tileElement)];
     if (map_get_water_height(tileElement) > 0)
         colour = WaterColour;
 
     if (!(tileElement->properties.surface.ownership & OWNERSHIP_OWNED))
-        colour = PALETTE_INDEX_10 | (colour & 0xFF00);
+        colour = MAP_COLOUR_UNOWNED(colour);
 
     const sint32 maxSupportedTileElementType = (sint32)Util::CountOf(ElementTypeAddColour);
     while (!tile_element_is_last_for_tile(tileElement++)) {
@@ -1597,28 +1579,25 @@ static uint16 map_window_get_pixel_colour_peep(sint32 x, sint32 y)
     return colour;
 }
 
-static uint16 map_window_get_pixel_colour_ride(sint32 x, sint32 y)
+static uint16 map_window_get_pixel_colour_ride(CoordsXY c)
 {
-    rct_tile_element *tileElement;
     Ride *ride;
-    uint32 colour;
-
-    colour = FALLBACK_COLOUR(PALETTE_INDEX_13);
-    tileElement = map_get_surface_element_at(x >> 5, y >> 5);
+    uint16 colourA = 0;                            // highlight colour
+    uint16 colourB = MAP_COLOUR(PALETTE_INDEX_13); // surface colour (dark grey)
+    
+    // as an improvement we could use first_element to show underground stuff?
+    rct_tile_element * tileElement = map_get_surface_element_at(c);
     do {
         switch (tile_element_get_type(tileElement)) {
         case TILE_ELEMENT_TYPE_SURFACE:
-            if (map_get_water_height(tileElement) > 0) {
-                colour &= 0xFFFF;
-                colour |= FALLBACK_COLOUR(PALETTE_INDEX_194);
-            }
-            if (!(tileElement->properties.surface.ownership & OWNERSHIP_OWNED)) {
-                colour &= 0xFF00FFFF;
-                colour |= PALETTE_INDEX_10 << 16;
-            }
+            if (map_get_water_height(tileElement) > 0)
+                // Why is this a different water colour as above (195)?
+                colourB = MAP_COLOUR(PALETTE_INDEX_194);
+            if (!(tileElement->properties.surface.ownership & OWNERSHIP_OWNED))
+                colourB = MAP_COLOUR_UNOWNED(colourB);
             break;
         case TILE_ELEMENT_TYPE_PATH:
-            colour = MAP_COLOUR(PALETTE_INDEX_14);
+            colourA = MAP_COLOUR(PALETTE_INDEX_14); // lighter grey
             break;
         case TILE_ELEMENT_TYPE_ENTRANCE:
             if (tileElement->properties.entrance.type == ENTRANCE_TYPE_PARK_ENTRANCE)
@@ -1626,15 +1605,15 @@ static uint16 map_window_get_pixel_colour_ride(sint32 x, sint32 y)
             // fall-through
         case TILE_ELEMENT_TYPE_TRACK:
             ride = get_ride(track_element_get_ride_index(tileElement));
-            colour = RideKeyColours[RideColourKey[ride->type]];
+            colourA = RideKeyColours[RideColourKey[ride->type]];
             break;
         }
     } while (!tile_element_is_last_for_tile(tileElement++));
 
-    if ((colour & 0xFFFF) == 0)
-        colour >>= 16;
+    if (colourA != 0)
+        return colourA;
 
-    return colour & 0xFFFF;
+    return colourB;
 }
 
 static void map_window_set_pixels(rct_window *w)
@@ -1653,14 +1632,14 @@ static void map_window_set_pixels(rct_window *w)
         dy = 32;
         break;
     case 1:
-        x = 8192 - 32;
+        x = (MAXIMUM_MAP_SIZE_TECHNICAL - 1) * 32;
         y = _currentLine * 32;
         dx = -32;
         dy = 0;
         break;
     case 2:
         x = ((MAXIMUM_MAP_SIZE_TECHNICAL - 1) - _currentLine) * 32;
-        y = 8192 - 32;
+        y = (MAXIMUM_MAP_SIZE_TECHNICAL - 1) * 32;
         dx = 0;
         dy = -32;
         break;
@@ -1681,10 +1660,10 @@ static void map_window_set_pixels(rct_window *w)
         ) {
             switch (w->selected_tab) {
             case PAGE_PEEPS:
-                colour = map_window_get_pixel_colour_peep(x, y);
+                colour = map_window_get_pixel_colour_peep({x, y});
                 break;
             case PAGE_RIDES:
-                colour = map_window_get_pixel_colour_ride(x, y);
+                colour = map_window_get_pixel_colour_ride({x, y});
                 break;
             }
             destination[0] = (colour >> 8) & 0xFF;
@@ -1702,30 +1681,19 @@ static void map_window_set_pixels(rct_window *w)
         _currentLine = 0;
 }
 
-static void map_window_screen_to_map(sint32 screenX, sint32 screenY, sint32 *mapX, sint32 *mapY)
+static CoordsXY map_window_screen_to_map(sint32 screenX, sint32 screenY)
 {
-    sint32 x, y;
-
     screenX = ((screenX + 8) - MAXIMUM_MAP_SIZE_TECHNICAL) / 2;
     screenY = ((screenY + 8)) / 2;
-    x = (screenY - screenX) * 32;
-    y = (screenX + screenY) * 32;
+    sint32 x = (screenY - screenX) * 32;
+    sint32 y = (screenX + screenY) * 32;
+    
     switch (get_current_rotation()) {
-    case 0:
-        *mapX = x;
-        *mapY = y;
-        break;
-    case 1:
-        *mapX = 8191 - y;
-        *mapY = x;
-        break;
-    case 2:
-        *mapX = 8191 - x;
-        *mapY = 8191 - y;
-        break;
-    case 3:
-        *mapX = y;
-        *mapY = 8191 - x;
-        break;
+    case 0: return {x, y};
+    case 1: return {MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - y, x};
+    case 2: return {MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - x, MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - y};
+    case 3: return {y, MAXIMUM_MAP_SIZE_TECHNICAL * 32 - 1 - x};
     }
+    
+    return {0, 0}; // unreachable
 }

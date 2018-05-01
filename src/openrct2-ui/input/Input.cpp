@@ -14,7 +14,7 @@
  *****************************************************************************/
 #pragma endregion
 
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <cctype>
 #include <openrct2/Context.h>
 #include <openrct2/OpenRCT2.h>
@@ -23,9 +23,14 @@
 #include <openrct2/Input.h>
 #include <openrct2/interface/Chat.h>
 #include <openrct2/interface/Console.h>
+#include <openrct2/paint/VirtualFloor.h>
 #include <openrct2-ui/windows/Window.h>
+#include "../interface/InGameConsole.h"
+#include "../UiContext.h"
 #include "KeyboardShortcuts.h"
 #include "Input.h"
+
+using namespace OpenRCT2::Ui;
 
 static void input_handle_console(sint32 key)
 {
@@ -53,7 +58,8 @@ static void input_handle_console(sint32 key)
     }
     if (input != CONSOLE_INPUT_NONE)
     {
-        console_input(input);
+        auto& console = GetInGameConsole();
+        console.Input(input);
     }
 }
 
@@ -128,7 +134,8 @@ void input_handle_keyboard(bool isTitle)
         return;
     }
 
-    if (!gConsoleOpen)
+    auto& console = GetInGameConsole();
+    if (!console.IsOpen())
     {
         if (!isTitle)
         {
@@ -172,9 +179,9 @@ void input_handle_keyboard(bool isTitle)
     if (gConfigGeneral.use_virtual_floor)
     {
         if (gInputPlaceObjectModifier & (PLACE_OBJECT_MODIFIER_COPY_Z | PLACE_OBJECT_MODIFIER_SHIFT_Z))
-            map_enable_virtual_floor();
+            virtual_floor_enable();
         else
-            map_remove_virtual_floor();
+            virtual_floor_disable();
     }
 
     // Handle key input
@@ -187,14 +194,14 @@ void input_handle_keyboard(bool isTitle)
         // Reserve backtick for console
         if (key == SDL_SCANCODE_GRAVE)
         {
-            if ((gConfigGeneral.debugging_tools && !context_is_input_active()) || gConsoleOpen)
+            if ((gConfigGeneral.debugging_tools && !context_is_input_active()) || console.IsOpen())
             {
                 window_cancel_textbox();
-                console_toggle();
+                console.Toggle();
             }
             continue;
         }
-        else if (gConsoleOpen)
+        else if (console.IsOpen())
         {
             input_handle_console(key);
             continue;

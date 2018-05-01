@@ -14,12 +14,19 @@
  *****************************************************************************/
 #pragma endregion
 
-#include <algorithm>
 #include <cwctype>
 #include <stdexcept>
 #include <vector>
 
-#include "../localisation/Localisation.h"
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
+#include "../localisation/Language.h"
 #include "../util/Util.h"
 
 #include "Math.hpp"
@@ -32,6 +39,14 @@ namespace String
     {
         if (str == nullptr) return std::string();
         else return std::string(str);
+    }
+
+    std::string StdFormat_VA(const utf8 * format, va_list args)
+    {
+        auto buffer = Format_VA(format, args);
+        auto returnValue = ToStd(buffer);
+        Memory::Free(buffer);
+        return returnValue;
     }
 
     std::string StdFormat(const utf8 * format, ...)
@@ -81,9 +96,9 @@ namespace String
 
     sint32 Compare(const utf8 * a, const utf8 * b, bool ignoreCase)
     {
-        if (a == b) return true;
-        if (a == nullptr || b == nullptr) return false;
-
+        if (a == b) return 0;
+        if (a == nullptr) a = "";
+        if (b == nullptr) b = "";
         if (ignoreCase)
         {
             return _stricmp(a, b);
@@ -517,5 +532,33 @@ namespace String
 
         size_t stringLength = endSubstr - startSubstr + 1;
         return std::string(startSubstr, stringLength);
+    }
+
+    std::string Convert(const std::string_view& src, sint32 srcCodePage, sint32 dstCodePage)
+    {
+#ifdef _WIN32
+        // Convert from source code page to UTF-16
+        std::wstring u16;
+        {
+            int srcLen = (int)src.size();
+            int sizeReq = MultiByteToWideChar(srcCodePage, 0, src.data(), srcLen, nullptr, 0);
+            u16 = std::wstring(sizeReq, 0);
+            MultiByteToWideChar(srcCodePage, 0, src.data(), srcLen, u16.data(), sizeReq);
+        }
+
+        // Convert from UTF-16 to destination code page
+        std::string dst;
+        {
+            int srcLen = (int)u16.size();
+            int sizeReq = WideCharToMultiByte(dstCodePage, 0, u16.data(), srcLen, nullptr, 0, nullptr, nullptr);
+            dst = std::string(sizeReq, 0);
+            WideCharToMultiByte(dstCodePage, 0, u16.data(), srcLen, dst.data(), sizeReq, nullptr, nullptr);
+        }
+
+        return dst;
+#else
+        STUB();
+        return std::string(src);
+#endif
     }
 }

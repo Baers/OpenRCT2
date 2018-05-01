@@ -18,6 +18,7 @@
 #include "../Cheats.h"
 #include "../config/Config.h"
 #include "../Context.h"
+#include "../core/Guard.hpp"
 #include "../core/Math.hpp"
 #include "../core/Util.hpp"
 #include "../Game.h"
@@ -32,6 +33,7 @@
 #include "../ride/RideData.h"
 #include "../ride/Track.h"
 #include "../ride/TrackData.h"
+#include "../ride/TrackDesign.h"
 #include "../scenario/Scenario.h"
 #include "../util/Util.h"
 #include "../windows/Intent.h"
@@ -46,8 +48,6 @@
 #include "SmallScenery.h"
 #include "TileInspector.h"
 #include "Wall.h"
-
-#include <limits>
 
 /**
  * Replaces 0x00993CCC, 0x00993CCE
@@ -88,10 +88,6 @@ LocationXY16        gMapSelectPositionB;
 LocationXYZ16       gMapSelectArrowPosition;
 uint8           gMapSelectArrowDirection;
 
-uint16          gMapVirtualFloorBaseSize = 5*32;
-uint16          gMapVirtualFloorHeight;
-bool            gMapVirtualFloorVisible = false;
-
 uint8 gMapGroundFlags;
 
 uint16 gWidePathTileLoopX;
@@ -107,8 +103,6 @@ sint16 gMapBaseZ;
 rct_tile_element gTileElements[MAX_TILE_TILE_ELEMENT_POINTERS * 3];
 rct_tile_element *gTileElementTilePointers[MAX_TILE_TILE_ELEMENT_POINTERS];
 LocationXY16 gMapSelectionTiles[300];
-static LocationXYZ16 gVirtualFloorLastMinLocation;
-static LocationXYZ16 gVirtualFloorLastMaxLocation;
 PeepSpawn gPeepSpawns[MAX_PEEP_SPAWNS];
 
 rct_tile_element *gNextFreeTileElement;
@@ -737,10 +731,9 @@ bool map_coord_is_connected(sint32 x, sint32 y, sint32 z, uint8 faceDirection)
             continue;
 
         rct_tile_element_path_properties props = tileElement->properties.path;
-        uint8 pathType = props.type >> 2;
         uint8 pathDirection = props.type & 3;
 
-        if (pathType & 1) {
+        if (footpath_element_is_sloped(tileElement)) {
             if (pathDirection == faceDirection) {
                 if (z == tileElement->base_height + 2)
                     return true;
@@ -889,7 +882,14 @@ bool map_is_location_owned_or_has_rights(sint32 x, sint32 y)
  *
  *  rct2: 0x006B8E1B
  */
-void game_command_remove_large_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_remove_large_scenery(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     uint8 base_height = *edx;
     uint8 tileIndex = *edx >> 8;
@@ -1041,7 +1041,14 @@ void game_command_remove_large_scenery(sint32* eax, sint32* ebx, sint32* ecx, si
  *
  *  rct2: 0x006B909A
  */
-void game_command_set_large_scenery_colour(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_set_large_scenery_colour(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    sint32 *                  ebp)
 {
     gCommandExpenditureType = RCT_EXPENDITURE_TYPE_LANDSCAPING;
     sint32 x = *eax;
@@ -1287,7 +1294,8 @@ money32 map_clear_scenery(sint32 x0, sint32 y0, sint32 x1, sint32 y1, sint32 cle
  *
  *  rct2: 0x0068DF91
  */
-void game_command_clear_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_clear_scenery(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     *ebx = map_clear_scenery(
         (sint16)(*eax & 0xFFFF),
@@ -1433,7 +1441,8 @@ static money32 map_change_surface_style(sint32 x0, sint32 y0, sint32 x1, sint32 
  *
  *  rct2: 0x00663CCD
  */
-void game_command_change_surface_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_change_surface_style(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     *ebx = map_change_surface_style(
         (sint16)(*eax & 0xFFFF),
@@ -1468,7 +1477,13 @@ static constexpr const uint8 tile_element_lower_styles[5][32] = {
  *
  *  rct2: 0x00663CB9
  */
-static sint32 map_set_land_height_clear_func(rct_tile_element** tile_element, sint32 x, sint32 y, uint8 flags, money32* price) {
+static sint32 map_set_land_height_clear_func(
+    rct_tile_element **        tile_element,
+    [[maybe_unused]] sint32    x,
+    [[maybe_unused]] sint32    y,
+    [[maybe_unused]] uint8     flags,
+    [[maybe_unused]] money32 * price)
+{
     if (tile_element_get_type(*tile_element) == TILE_ELEMENT_TYPE_SURFACE)
         return 0;
 
@@ -1524,7 +1539,7 @@ static sint32 tile_element_get_corner_height(rct_tile_element *tileElement, sint
     return map_get_corner_height(z, slope, direction);
 }
 
-static money32 map_set_land_height(sint32 flags, sint32 x, sint32 y, sint32 height, sint32 style, sint32 selectionType)
+static money32 map_set_land_height(sint32 flags, sint32 x, sint32 y, sint32 height, sint32 style)
 {
     rct_tile_element *tileElement;
 
@@ -1734,15 +1749,21 @@ static money32 map_set_land_height(sint32 flags, sint32 x, sint32 y, sint32 heig
     return cost;
 }
 
-void game_command_set_land_height(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
+void game_command_set_land_height(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     *ebx = map_set_land_height(
         *ebx & 0xFF,
         *eax & 0xFFFF,
         *ecx & 0xFFFF,
         *edx & 0xFF,
-        (*edx >> 8) & 0xFF,
-        *edi >> 5
+        (*edx >> 8) & 0xFF
     );
 }
 
@@ -1778,7 +1799,8 @@ static money32 map_set_land_ownership(uint8 flags, sint16 x1, sint16 y1, sint16 
  *
  *  rct2: 0x006648E3
  */
-void game_command_set_land_ownership(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
+void game_command_set_land_ownership(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     sint32 flags = *ebx & 0xFF;
 
@@ -1854,6 +1876,12 @@ static money32 raise_land(sint32 flags, sint32 x, sint32 y, sint32 z, sint32 ax,
         audio_play_sound_at_location(SOUND_PLACE_ITEM, x, y, z);
     }
 
+    // Keep big coordinates within map boundaries
+    ax = std::max<decltype(ax)>(32, ax);
+    bx = std::min<decltype(bx)>(gMapSizeMaxXY, bx);
+    ay = std::max<decltype(bx)>(32, ay);
+    by = std::min<decltype(by)>(gMapSizeMaxXY, by);
+
     uint8 min_height = map_get_lowest_land_height(ax, bx, ay, by);
 
     for (sint32 yi = ay; yi <= by; yi += 32) {
@@ -1867,7 +1895,7 @@ static money32 raise_land(sint32 flags, sint32 x, sint32 y, sint32 z, sint32 ax,
                         height += 2;
                         newStyle &= ~0x20;
                     }
-                    money32 tileCost = map_set_land_height(flags, xi, yi, height, newStyle, selectionType);
+                    money32 tileCost = map_set_land_height(flags, xi, yi, height, newStyle);
                     if (tileCost == MONEY32_UNDEFINED)
                         return MONEY32_UNDEFINED;
 
@@ -1901,6 +1929,12 @@ static money32 lower_land(sint32 flags, sint32 x, sint32 y, sint32 z, sint32 ax,
         return MONEY32_UNDEFINED;
     }
 
+    // Keep big coordinates within map boundaries
+    ax = std::max<decltype(ax)>(32, ax);
+    bx = std::min<decltype(bx)>(gMapSizeMaxXY, bx);
+    ay = std::max<decltype(bx)>(32, ay);
+    by = std::min<decltype(by)>(gMapSizeMaxXY, by);
+
     uint8 max_height = map_get_highest_land_height(ax, bx, ay, by);
 
     for (sint32 yi = ay; yi <= by; yi += 32) {
@@ -1919,7 +1953,7 @@ static money32 lower_land(sint32 flags, sint32 x, sint32 y, sint32 z, sint32 ax,
                         height -= 2;
                         newStyle &= ~0x20;
                     }
-                    money32 tileCost = map_set_land_height(flags, xi, yi, height, newStyle, selectionType);
+                    money32 tileCost = map_set_land_height(flags, xi, yi, height, newStyle);
                     if (tileCost == MONEY32_UNDEFINED)
                         return MONEY32_UNDEFINED;
 
@@ -2105,7 +2139,8 @@ money32 lower_water(sint16 x0, sint16 y0, sint16 x1, sint16 y1, uint8 flags)
  *
  *  rct2: 0x0068C542
  */
-void game_command_raise_land(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_raise_land(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     *ebx = raise_land(
         *ebx,
@@ -2124,7 +2159,8 @@ void game_command_raise_land(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx,
  *
  *  rct2: 0x0068C6D1
  */
-void game_command_lower_land(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_lower_land(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     *ebx = lower_land(
         *ebx,
@@ -2543,7 +2579,8 @@ static money32 smooth_land(sint32 flags, sint32 centreX, sint32 centreY, sint32 
  *
  *  rct2: 0x0068BC01
  */
-void game_command_smooth_land(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_smooth_land(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     sint32 flags = *ebx & 0xFF;
     sint32 centreX = *eax & 0xFFFF;
@@ -2560,7 +2597,14 @@ void game_command_smooth_land(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx
  *
  *  rct2: 0x006E66A0
  */
-void game_command_raise_water(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_raise_water(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    [[maybe_unused]] sint32 * edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    sint32 *                  ebp)
 {
     *ebx = raise_water(
         (sint16)(*eax & 0xFFFF),
@@ -2575,7 +2619,14 @@ void game_command_raise_water(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx
  *
  *  rct2: 0x006E6878
  */
-void game_command_lower_water(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_lower_water(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    [[maybe_unused]] sint32 * edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    sint32 *                  ebp)
 {
     *ebx = lower_water(
         (sint16)(*eax & 0xFFFF),
@@ -2590,7 +2641,14 @@ void game_command_lower_water(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx
  *
  *  rct2: 0x006E650F
  */
-void game_command_set_water_height(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_set_water_height(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     sint32 x = *eax;
     sint32 y = *ecx;
@@ -2685,7 +2743,8 @@ bool map_is_location_at_edge(sint32 x, sint32 y)
  *
  *  rct2: 0x006B893C
  */
-void game_command_place_large_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_place_large_scenery(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     gCommandExpenditureType = RCT_EXPENDITURE_TYPE_LANDSCAPING;
     sint32 x = (sint16)*eax;
@@ -2817,7 +2876,7 @@ void game_command_place_large_scenery(sint32* eax, sint32* ebx, sint32* ecx, sin
         sint32 zLow = (tile->z_offset + maxHeight) / 8;
         sint32 zHigh = (tile->z_clearance / 8) + zLow;
 
-        sint32 bx = tile->var_7 >> 12;
+        sint32 bx = tile->flags >> 12;
         bx <<= rotation;
         uint8 bl = bx;
         uint8 bh = bl >> 4;
@@ -2988,7 +3047,7 @@ void map_invalidate_map_selection_tiles()
         map_invalidate_tile_full(position->x, position->y);
 }
 
-static void map_get_bounding_box(sint32 ax, sint32 ay, sint32 bx, sint32 by, sint32 *left, sint32 *top, sint32 *right, sint32 *bottom)
+void map_get_bounding_box(sint32 ax, sint32 ay, sint32 bx, sint32 by, sint32 *left, sint32 *top, sint32 *right, sint32 *bottom)
 {
     sint32 x, y;
     x = ax;
@@ -3176,23 +3235,6 @@ rct_tile_element *tile_element_insert(sint32 x, sint32 y, sint32 z, sint32 flags
 }
 
 /**
- * This function will validate element address. It will only check if element lies within
- * the user-accessible part of map elements, there is some scratch space behind that is not
- * considered valid here.
- */
-bool tile_element_check_address(const rct_tile_element * const element)
-{
-    if (element >= gTileElements
-        && element < gTileElements + MAX_TILE_ELEMENTS
-        // condition below checks alignment
-        && gTileElements + (((uintptr_t)element - (uintptr_t)gTileElements) / sizeof(rct_tile_element)) == element)
-    {
-        return true;
-    }
-    return false;
-}
-
-/**
  *
  *  rct2: 0x0068BB18
  */
@@ -3264,7 +3306,7 @@ sint32 map_can_construct_with_clear_at(sint32 x, sint32 y, sint32 zLow, sint32 z
     sint32 al, ah, bh, cl, ch, water_height;
     al = ah = bh = cl = ch = water_height = 0;
     uint8 slope = 0;
-    
+
     gMapGroundFlags = ELEMENT_IS_ABOVE_GROUND;
     bool canBuildCrossing = false;
     if (x >= gMapSizeUnits || y >= gMapSizeUnits || x < 32 || y < 32) {
@@ -3578,26 +3620,45 @@ sint32 tile_element_get_banner_index(rct_tile_element *tileElement)
     case TILE_ELEMENT_TYPE_LARGE_SCENERY:
         sceneryEntry = get_large_scenery_entry(scenery_large_get_type(tileElement));
         if (sceneryEntry->large_scenery.scrolling_mode == 0xFF)
-            return -1;
+            return BANNER_INDEX_NULL;
 
         return scenery_large_get_banner_id(tileElement);
     case TILE_ELEMENT_TYPE_WALL:
         sceneryEntry = get_wall_entry(tileElement->properties.wall.type);
         if (sceneryEntry == nullptr || sceneryEntry->wall.scrolling_mode == 0xFF)
-            return -1;
+            return BANNER_INDEX_NULL;
 
         return tileElement->properties.wall.banner_index;
     case TILE_ELEMENT_TYPE_BANNER:
         return tileElement->properties.banner.index;
     default:
-        return -1;
+        return BANNER_INDEX_NULL;
+    }
+}
+
+void tile_element_set_banner_index(rct_tile_element * tileElement, sint32 bannerIndex)
+{
+    switch (tile_element_get_type(tileElement))
+    {
+        case TILE_ELEMENT_TYPE_WALL:
+            tileElement->properties.wall.banner_index = (uint8)bannerIndex;
+            break;
+        case TILE_ELEMENT_TYPE_LARGE_SCENERY:
+            scenery_large_set_banner_id(tileElement, (uint8)bannerIndex);
+            break;
+        case TILE_ELEMENT_TYPE_BANNER:
+            tileElement->properties.banner.index = (uint8)bannerIndex;
+            break;
+        default:
+            log_error("Tried to set banner index on unsuitable tile element!");
+            Guard::Assert(false);
     }
 }
 
 void tile_element_remove_banner_entry(rct_tile_element *tileElement)
 {
     sint32 bannerIndex = tile_element_get_banner_index(tileElement);
-    if (bannerIndex == -1)
+    if (bannerIndex == BANNER_INDEX_NULL)
         return;
 
     rct_banner* banner = &gBanners[bannerIndex];
@@ -4138,6 +4199,33 @@ void map_invalidate_element(sint32 x, sint32 y, rct_tile_element *tileElement)
     map_invalidate_tile(x, y, tileElement->base_height * 8, tileElement->clearance_height * 8);
 }
 
+void map_invalidate_region(const LocationXY16& mins, const LocationXY16& maxs)
+{
+    sint32 x0, y0, x1, y1, left, right, top, bottom;
+
+    x0 = mins.x + 16;
+    y0 = mins.y + 16;
+
+    x1 = maxs.x + 16;
+    y1 = maxs.y + 16;
+
+    map_get_bounding_box(x0, y0, x1, y1, &left, &top, &right, &bottom);
+
+    left -= 32;
+    right += 32;
+    bottom += 32;
+    top -= 32 + 2080;
+
+    for (sint32 i = 0; i < MAX_VIEWPORT_COUNT; i++)
+    {
+        rct_viewport *viewport = &g_viewport_list[i];
+        if (viewport->width != 0)
+        {
+            viewport_invalidate(viewport, left, top, right, bottom);
+        }
+    }
+}
+
 sint32 map_get_tile_side(sint32 mapX, sint32 mapY)
 {
     sint32 subMapX = mapX & (32 - 1);
@@ -4216,76 +4304,15 @@ void map_clear_all_elements()
     }
 }
 
-void game_command_set_sign_name(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp) {
-    static char newName[128];
-
-    if ((*ecx >= MAX_BANNERS) || (*ecx < 0))
-    {
-        log_warning("Invalid game command for setting sign name, banner id = %d", *ecx);
-        *ebx = MONEY32_UNDEFINED;
-        return;
-    }
-    rct_banner* banner = &gBanners[*ecx];
-    sint32 x = banner->x << 5;
-    sint32 y = banner->y << 5;
-
-    sint32 nameChunkIndex = *eax & 0xFFFF;
-
-    gCommandExpenditureType = RCT_EXPENDITURE_TYPE_RIDE_RUNNING_COSTS;
-    sint32 nameChunkOffset = nameChunkIndex - 1;
-    if (nameChunkOffset < 0)
-        nameChunkOffset = 2;
-    nameChunkOffset *= 12;
-    nameChunkOffset = std::min(nameChunkOffset, (sint32)Util::CountOf(newName) - 12);
-    memcpy(newName + nameChunkOffset + 0, edx, 4);
-    memcpy(newName + nameChunkOffset + 4, ebp, 4);
-    memcpy(newName + nameChunkOffset + 8, edi, 4);
-
-    if (nameChunkIndex != 0) {
-        *ebx = 0;
-        return;
-    }
-
-    if (!(*ebx & GAME_COMMAND_FLAG_APPLY)) {
-        *ebx = 0;
-        return;
-    }
-
-    if (newName[0] != 0) {
-        rct_string_id string_id = user_string_allocate(USER_STRING_DUPLICATION_PERMITTED, newName);
-        if (string_id != 0) {
-            rct_string_id prev_string_id = banner->string_idx;
-            banner->string_idx = string_id;
-            user_string_free(prev_string_id);
-
-            banner->flags &= ~(BANNER_FLAG_LINKED_TO_RIDE);
-            gfx_invalidate_screen();
-        } else {
-            gGameCommandErrorText = STR_ERR_CANT_SET_BANNER_TEXT;
-            *ebx = MONEY32_UNDEFINED;
-            return;
-        }
-    }
-    else{
-        sint32 rideIndex = banner_get_closest_ride_index(x, y, 16);
-        if (rideIndex == -1) {
-            *ebx = 0;
-            return;
-        }
-
-        banner->colour = rideIndex;
-        banner->flags |= BANNER_FLAG_LINKED_TO_RIDE;
-
-        rct_string_id prev_string_id = banner->string_idx;
-        banner->string_idx = STR_DEFAULT_SIGN;
-        user_string_free(prev_string_id);
-        gfx_invalidate_screen();
-    }
-
-    *ebx = 0;
-}
-
-void game_command_set_sign_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp) {
+void game_command_set_sign_style(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    sint32 *                  ebp)
+{
     uint8 bannerId = *ecx & 0xFF;
     if (bannerId > Util::CountOf(gBanners)) {
         log_warning("Invalid game command for setting sign style, banner id = %d", bannerId);
@@ -4300,7 +4327,6 @@ void game_command_set_sign_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* 
     uint8 textColour = (uint8)*edi;
 
     if (*ebp == 0) { // small sign
-
         rct_tile_element* tile_element = map_get_first_element_at(x / 32, y / 32);
         bool wall_found = false;
         do{
@@ -4363,7 +4389,8 @@ void game_command_set_sign_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* 
     *ebx = 0;
 }
 
-void game_command_modify_tile(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_modify_tile(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     const sint32 flags = *ebx;
     const sint32 x = *ecx & 0xFF;
@@ -4746,162 +4773,6 @@ uint8 tile_element_get_ride_index(const rct_tile_element * tileElement)
     default:
         return 0xFF;
     }
-}
-
-void map_set_virtual_floor_height(sint16 height)
-{
-    if (!gMapVirtualFloorVisible)
-    {
-        // If the modifiers are not set we do not actually care as the floor is invisible.
-        return;
-    }
-
-    if (gMapVirtualFloorHeight != height)
-    {
-        map_invalidate_virtual_floor_tiles();
-        gMapVirtualFloorHeight = height;
-    }
-}
-
-void map_enable_virtual_floor()
-{
-    if (gMapVirtualFloorVisible)
-    {
-        return;
-    }
-
-    // Force invalidation on the next draw.
-    gVirtualFloorLastMinLocation.z = std::numeric_limits<sint16>::max();
-    gVirtualFloorLastMaxLocation.z = std::numeric_limits<sint16>::lowest();
-    gMapVirtualFloorVisible = true;
-}
-
-void map_remove_virtual_floor()
-{
-    if (!gMapVirtualFloorVisible)
-    {
-        return;
-    }
-
-    // Force invalidation, even if the position hasn't changed.
-    gVirtualFloorLastMinLocation.z = std::numeric_limits<sint16>::max();
-    gVirtualFloorLastMaxLocation.z = std::numeric_limits<sint16>::lowest();
-    map_invalidate_virtual_floor_tiles();
-
-    gMapVirtualFloorHeight = 0;
-    gMapVirtualFloorVisible = false;
-}
-
-void map_invalidate_virtual_floor_tiles()
-{
-    if (!gMapVirtualFloorVisible)
-    {
-        return;
-    }
-
-    // First, let's figure out how big our selection is.
-    LocationXY16 min_position = { std::numeric_limits<sint16>::max(),    std::numeric_limits<sint16>::max()    };
-    LocationXY16 max_position = { std::numeric_limits<sint16>::lowest(), std::numeric_limits<sint16>::lowest() };
-
-    if ((gMapSelectFlags & MAP_SELECT_FLAG_ENABLE))
-    {
-        min_position   = gMapSelectPositionA;
-        max_position   = gMapSelectPositionB;
-    }
-    if (gMapSelectFlags & MAP_SELECT_FLAG_ENABLE_CONSTRUCT)
-    {
-        for (LocationXY16 * tile = gMapSelectionTiles; tile->x != -1; tile++)
-        {
-            min_position.x = std::min(min_position.x, tile->x);
-            min_position.y = std::min(min_position.y, tile->y);
-            max_position.x = std::max(max_position.x, tile->x);
-            max_position.y = std::max(max_position.y, tile->y);
-        }
-    }
-
-    // Do not invalidate if we're between ticks.
-    if (min_position.x == std::numeric_limits<sint16>::max()    || min_position.y == std::numeric_limits<sint16>::max() ||
-        max_position.x == std::numeric_limits<sint16>::lowest() || max_position.y == std::numeric_limits<sint16>::lowest())
-        return;
-
-    // Apply the virtual floor size to the computed invalidation area.
-    min_position.x  -= gMapVirtualFloorBaseSize + 1;
-    min_position.y  -= gMapVirtualFloorBaseSize + 1;
-    max_position.x  += gMapVirtualFloorBaseSize + 1;
-    max_position.y  += gMapVirtualFloorBaseSize + 1;
-
-    // Do not invalidate if floor hasn't moved.
-    if (gVirtualFloorLastMinLocation.x == min_position.x &&
-        gVirtualFloorLastMinLocation.y == min_position.y &&
-        gVirtualFloorLastMinLocation.z == gMapVirtualFloorHeight)
-    {
-        return;
-    }
-
-    LocationXY16 corr_min_position = min_position;
-    LocationXY16 corr_max_position = max_position;
-
-    // Invalidate previous locations, too, if appropriate.
-    if (gVirtualFloorLastMinLocation.z != std::numeric_limits<sint16>::max() &&
-        gVirtualFloorLastMaxLocation.z != std::numeric_limits<sint16>::lowest())
-    {
-        corr_min_position.x = std::min(min_position.x, gVirtualFloorLastMinLocation.x);
-        corr_min_position.y = std::min(min_position.y, gVirtualFloorLastMinLocation.y);
-        corr_max_position.x = std::max(max_position.x, gVirtualFloorLastMaxLocation.x);
-        corr_max_position.y = std::max(max_position.y, gVirtualFloorLastMaxLocation.y);
-    }
-
-    for (sint16 x = corr_min_position.x; x < corr_max_position.x; x++)
-    {
-        for (sint16 y = corr_min_position.y; y < corr_max_position.y; y++)
-        {
-            map_invalidate_tile_full(x, y);
-        }
-    }
-
-    // Save minimal and maximal positions. Note: not their corrected positions!
-    gVirtualFloorLastMinLocation.x = min_position.x;
-    gVirtualFloorLastMinLocation.y = min_position.y;
-    gVirtualFloorLastMinLocation.z = gMapVirtualFloorHeight;
-
-    gVirtualFloorLastMaxLocation.x = max_position.x;
-    gVirtualFloorLastMaxLocation.y = max_position.y;
-    gVirtualFloorLastMaxLocation.z = gMapVirtualFloorHeight;
-}
-
-bool map_tile_is_part_of_virtual_floor(sint16 x, sint16 y)
-{
-    if (!gMapVirtualFloorVisible)
-    {
-        return false;
-    }
-
-    // Check if map selection (usually single tiles) are enabled
-    //  and if the current tile is near or on them
-    if ((gMapSelectFlags & MAP_SELECT_FLAG_ENABLE) &&
-        x >= gMapSelectPositionA.x - gMapVirtualFloorBaseSize &&
-        y >= gMapSelectPositionA.y - gMapVirtualFloorBaseSize &&
-        x <= gMapSelectPositionB.x + gMapVirtualFloorBaseSize &&
-        y <= gMapSelectPositionB.y + gMapVirtualFloorBaseSize)
-    {
-        return true;
-    }
-    else if (gMapSelectFlags & MAP_SELECT_FLAG_ENABLE_CONSTRUCT)
-    {
-        // Check if we are anywhere near the selection tiles (larger scenery / rides)
-        for (LocationXY16 * tile = gMapSelectionTiles; tile->x != -1; tile++)
-        {
-            if (x >= tile->x - gMapVirtualFloorBaseSize &&
-                y >= tile->y - gMapVirtualFloorBaseSize &&
-                x <= tile->x + gMapVirtualFloorBaseSize &&
-                y <= tile->y + gMapVirtualFloorBaseSize)
-            {
-                return true;
-            }
-        }
-    }
-
-    return false;
 }
 
 void FixLandOwnershipTiles(std::initializer_list<TileCoordsXY> tiles)

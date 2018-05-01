@@ -28,6 +28,8 @@ enum
     PROVISIONAL_PATH_FLAG_2          = (1 << 2),
 };
 
+#define FOOTPATH_ELEMENT_INSERT_QUEUE 0x80
+
 #pragma pack(push, 1)
 struct rct_footpath_entry {
     rct_string_id string_idx;   // 0x00
@@ -126,6 +128,7 @@ extern uint8 gFootpathGroundFlags;
 
 extern const LocationXY16 word_981D6C[4];
 
+rct_tile_element *map_get_footpath_element(sint32 x, sint32 y, sint32 z);
 money32 footpath_remove_real(sint32 x, sint32 y, sint32 z, sint32 flags);
 void game_command_place_footpath(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, sint32 * esi, sint32 * edi, sint32 * ebp);
 void game_command_place_footpath_from_track(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, sint32 * esi, sint32 * edi, sint32 * ebp);
@@ -150,6 +153,8 @@ bool footpath_element_is_sloped(const rct_tile_element * tileElement);
 void footpath_element_set_sloped(rct_tile_element * tileElement, bool isSloped);
 uint8 footpath_element_get_slope_direction(const rct_tile_element * tileElement);
 bool footpath_element_is_queue(const rct_tile_element * tileElement);
+void footpath_element_set_queue(rct_tile_element * tileElement);
+void footpath_element_clear_queue(rct_tile_element * tileElement);
 bool footpath_element_has_queue_banner(const rct_tile_element * tileElement);
 bool footpath_element_is_wide(const rct_tile_element * tileElement);
 uint8 footpath_element_get_type(const rct_tile_element * tileElement);

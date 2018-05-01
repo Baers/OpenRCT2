@@ -20,12 +20,15 @@
 #include "Entrance.h"
 #include "Footpath.h"
 #include "Map.h"
+#include "MapAnimation.h"
 #include "Park.h"
+#include "Sprite.h"
 #include "../Cheats.h"
 #include "../Game.h"
 #include "../localisation/StringIds.h"
 #include "../management/Finance.h"
 #include "../ride/Track.h"
+#include "../ride/Station.h"
 
 bool gParkEntranceGhostExists = false;
 LocationXYZ16 gParkEntranceGhostPosition = { 0, 0, 0 };
@@ -193,7 +196,8 @@ static money32 RideEntranceExitPlace(sint16 x,
 
         if (isExit)
         {
-            if (ride->exits[stationNum].xy != RCT_XY8_UNDEFINED)
+            const auto exit = ride_get_exit_location(rideIndex, stationNum);
+            if (!exit.isNull())
             {
                 if (flags & GAME_COMMAND_FLAG_GHOST)
                 {
@@ -201,22 +205,26 @@ static money32 RideEntranceExitPlace(sint16 x,
                     return MONEY32_UNDEFINED;
                 }
 
-                removeCoord.x = ride->exits[stationNum].x * 32;
-                removeCoord.y = ride->exits[stationNum].y * 32;
+                removeCoord.x = exit.x * 32;
+                removeCoord.y = exit.y * 32;
                 requiresRemove = true;
             }
         }
-        else if (ride->entrances[stationNum].xy != RCT_XY8_UNDEFINED)
+        else
         {
-            if (flags & GAME_COMMAND_FLAG_GHOST)
+            const auto entrance = ride_get_entrance_location(rideIndex, stationNum);
+            if (!entrance.isNull())
             {
-                gGameCommandErrorText = 0;
-                return MONEY32_UNDEFINED;
-            }
+                if (flags & GAME_COMMAND_FLAG_GHOST)
+                {
+                    gGameCommandErrorText = 0;
+                    return MONEY32_UNDEFINED;
+                }
 
-            removeCoord.x = ride->entrances[stationNum].x * 32;
-            removeCoord.y = ride->entrances[stationNum].y * 32;
-            requiresRemove = true;
+                removeCoord.x = entrance.x * 32;
+                removeCoord.y = entrance.y * 32;
+                requiresRemove = true;
+            }
         }
 
         if (requiresRemove)
@@ -296,13 +304,11 @@ static money32 RideEntranceExitPlace(sint16 x,
 
             if (isExit)
             {
-                ride->exits[stationNum].x = x / 32;
-                ride->exits[stationNum].y = y / 32;
+                ride_set_exit_location(ride, stationNum, { x / 32, y / 32, z / 8, (uint8)tile_element_get_direction(tileElement)});
             }
             else
             {
-                ride->entrances[stationNum].x = x / 32;
-                ride->entrances[stationNum].y = y / 32;
+                ride_set_entrance_location(ride, stationNum, { x / 32, y / 32, z / 8, (uint8)tile_element_get_direction(tileElement)});
                 ride->last_peep_in_queue[stationNum] = SPRITE_INDEX_NULL;
                 ride->queue_length[stationNum] = 0;
 
@@ -384,7 +390,10 @@ static money32 RideEntranceExitRemove(sint16 x, sint16 y, uint8 rideIndex, uint8
             if (tile_element_get_type(tileElement) != TILE_ELEMENT_TYPE_ENTRANCE)
                 continue;
 
-            if (tileElement->base_height != ride->station_heights[stationNum])
+            if (tile_element_get_ride_index(tileElement) != rideIndex)
+                continue;
+
+            if (tile_element_get_station(tileElement) != stationNum)
                 continue;
 
             if (flags & GAME_COMMAND_FLAG_5 && !(tileElement->flags & TILE_ELEMENT_FLAG_GHOST))
@@ -416,11 +425,11 @@ static money32 RideEntranceExitRemove(sint16 x, sint16 y, uint8 rideIndex, uint8
 
         if (isExit)
         {
-            ride->exits[stationNum].xy = RCT_XY8_UNDEFINED;
+            ride_clear_exit_location(ride, stationNum);
         }
         else
         {
-            ride->entrances[stationNum].xy = RCT_XY8_UNDEFINED;
+            ride_clear_entrance_location(ride, stationNum);
         }
 
         footpath_update_queue_chains();
@@ -453,13 +462,14 @@ static money32 RideEntranceExitPlaceGhost(uint8 rideIndex, sint16 x, sint16 y, u
  *
  *  rct2: 0x00666A63
  */
-void game_command_remove_park_entrance(sint32 *eax,
-                                       sint32 *ebx,
-                                       sint32 *ecx,
-                                       sint32 *edx,
-                                       sint32 *esi,
-                                       sint32 *edi,
-                                       sint32 *ebp)
+void game_command_remove_park_entrance(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     *ebx = ParkEntranceRemove(
         *eax & 0xFFFF,
@@ -572,13 +582,14 @@ money32 ride_entrance_exit_place_ghost(sint32 rideIndex,
  *
  *  rct2: 0x006660A8
  */
-void game_command_place_ride_entrance_or_exit(sint32 *eax,
-                                              sint32 *ebx,
-                                              sint32 *ecx,
-                                              sint32 *edx,
-                                              sint32 *esi,
-                                              sint32 *edi,
-                                              sint32 *ebp)
+void game_command_place_ride_entrance_or_exit(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     *ebx = RideEntranceExitPlace(
         *eax & 0xFFFF,
@@ -596,13 +607,14 @@ void game_command_place_ride_entrance_or_exit(sint32 *eax,
  *
  *  rct2: 0x0066640B
  */
-void game_command_remove_ride_entrance_or_exit(sint32 *eax,
-                                               sint32 *ebx,
-                                               sint32 *ecx,
-                                               sint32 *edx,
-                                               sint32 *esi,
-                                               sint32 *edi,
-                                               sint32 *ebp)
+void game_command_remove_ride_entrance_or_exit(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     *ebx = RideEntranceExitRemove(
         *eax & 0xFFFF,

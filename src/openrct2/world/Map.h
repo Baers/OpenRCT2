@@ -19,7 +19,7 @@
 
 #include <initializer_list>
 #include "../common.h"
-#include "Location.h"
+#include "Location.hpp"
 
 #pragma pack(push, 1)
 struct rct_tile_element_surface_properties {
@@ -385,10 +385,6 @@ extern LocationXY16     gMapSelectPositionB;
 extern LocationXYZ16    gMapSelectArrowPosition;
 extern uint8        gMapSelectArrowDirection;
 
-extern uint16       gMapVirtualFloorHeight;
-extern uint16       gMapVirtualFloorBaseSize;
-extern bool         gMapVirtualFloorVisible;
-
 extern uint8 gMapGroundFlags;
 
 extern rct_tile_element gTileElements[MAX_TILE_TILE_ELEMENT_POINTERS * 3];
@@ -458,16 +454,11 @@ bool map_surface_is_blocked(sint16 x, sint16 y);
 void tile_element_remove(rct_tile_element *tileElement);
 void map_remove_all_rides();
 void map_invalidate_map_selection_tiles();
+void map_get_bounding_box(sint32 ax, sint32 ay, sint32 bx, sint32 by, sint32 *left, sint32 *top, sint32 *right, sint32 *bottom);
 void map_invalidate_selection_rect();
 void map_reorganise_elements();
 bool map_check_free_elements_and_reorganise(sint32 num_elements);
 rct_tile_element *tile_element_insert(sint32 x, sint32 y, sint32 z, sint32 flags);
-bool tile_element_check_address(const rct_tile_element * const element);
-void map_set_virtual_floor_height(sint16 height);
-void map_enable_virtual_floor();
-void map_remove_virtual_floor();
-void map_invalidate_virtual_floor_tiles();
-bool map_tile_is_part_of_virtual_floor(sint16 x, sint16 y);
 
 using CLEAR_FUNC = sint32(*)(rct_tile_element** tile_element, sint32 x, sint32 y, uint8 flags, money32* price);
 
@@ -507,7 +498,6 @@ void game_command_place_wall(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx,
 void game_command_place_large_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
 void game_command_place_park_entrance(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
 void game_command_set_banner_name(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
-void game_command_set_sign_name(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
 void game_command_set_banner_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
 void game_command_set_sign_style(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
 void game_command_modify_tile(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp);
@@ -530,9 +520,11 @@ void map_update_tiles();
 sint32 map_get_highest_z(sint32 tileX, sint32 tileY);
 
 sint32 tile_element_get_banner_index(rct_tile_element *tileElement);
+void tile_element_set_banner_index(rct_tile_element * tileElement, sint32 bannerIndex);
 void tile_element_remove_banner_entry(rct_tile_element *tileElement);
 
 bool tile_element_is_underground(rct_tile_element *tileElement);
+bool tile_element_wants_path_connection_towards(TileCoordsXYZD coords, const rct_tile_element * const elementToBeRemoved);
 
 void map_remove_out_of_range_elements();
 void map_extend_boundary_surface();
@@ -546,6 +538,7 @@ void map_invalidate_tile_zoom1(sint32 x, sint32 y, sint32 z0, sint32 z1);
 void map_invalidate_tile_zoom0(sint32 x, sint32 y, sint32 z0, sint32 z1);
 void map_invalidate_tile_full(sint32 x, sint32 y);
 void map_invalidate_element(sint32 x, sint32 y, rct_tile_element *tileElement);
+void map_invalidate_region(const LocationXY16& mins, const LocationXY16& maxs);
 
 sint32 map_get_tile_side(sint32 mapX, sint32 mapY);
 sint32 map_get_tile_quadrant(sint32 mapX, sint32 mapY);

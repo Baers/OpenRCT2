@@ -7,6 +7,7 @@
 #include <openrct2/core/String.hpp>
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/ParkImporter.h>
+#include <openrct2/ride/Ride.h>
 #include "TestData.h"
 
 #include <openrct2/platform/platform.h>
@@ -19,6 +20,7 @@ TEST(MultiLaunchTest, all)
     std::string path = TestData::GetParkPath("bpb.sv6");
 
     gOpenRCT2Headless = true;
+    gOpenRCT2NoGraphics = true;
 
     core_init();
     for (int i = 0; i < 3; i++)

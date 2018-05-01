@@ -19,8 +19,10 @@
 #include "../../interface/Viewport.h"
 #include "../../localisation/Localisation.h"
 #include "../../ride/RideData.h"
+#include "../../ride/TrackDesign.h"
 #include "../../world/Entrance.h"
 #include "../../world/Footpath.h"
+#include "../../world/Park.h"
 #include "../Paint.h"
 #include "../Supports.h"
 #include "TileElement.h"
@@ -211,11 +213,17 @@ static void park_entrance_paint(paint_session * session, uint8 direction, sint32
         _unk9E32BC = ghost_id;
     }
 
-    rct_footpath_entry* path_entry = get_footpath_entry(tile_element->properties.entrance.path_type);
-
     // Index to which part of the entrance
     // Middle, left, right
     uint8 part_index = tile_element->properties.entrance.index & 0xF;
+    rct_footpath_entry * path_entry = nullptr;
+
+    // The left and right of the park entrance often have this set to 127.
+    // So only attempt to get the footpath type if we're dealing with the middle bit of the entrance.
+    if (part_index == 0)
+        path_entry = get_footpath_entry(tile_element->properties.entrance.path_type);
+
+
     rct_entrance_type* entrance;
     uint8 di = ((direction / 2 + part_index / 2) & 1) ? 0x1A : 0x20;
 

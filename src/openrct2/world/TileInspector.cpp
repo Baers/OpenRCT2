@@ -14,31 +14,37 @@
  *****************************************************************************/
 #pragma endregion
 
+#include "Banner.h"
 #include "../common.h"
 #include "../Context.h"
 #include "../Game.h"
 #include "../core/Guard.hpp"
 #include "../interface/Window.h"
 #include "../interface/Window_internal.h"
+#include "../localisation/Localisation.h"
 #include "../ride/Track.h"
 #include "../windows/Intent.h"
 #include "../windows/tile_inspector.h"
 #include "Footpath.h"
+#include "LargeScenery.h"
 #include "Map.h"
+#include "Scenery.h"
 #include "TileInspector.h"
+#include "../ride/Station.h"
+#include "Park.h"
 
 uint32 windowTileInspectorTileX;
 uint32 windowTileInspectorTileY;
 sint32 windowTileInspectorElementCount = 0;
 
-static void window_tile_inspector_set_page(rct_window * w, const TILE_INSPECTOR_PAGE page)
+static void window_tile_inspector_set_page(const TILE_INSPECTOR_PAGE page)
 {
     auto intent = Intent(INTENT_ACTION_SET_TILE_INSPECTOR_PAGE);
     intent.putExtra(INTENT_EXTRA_PAGE, page);
     context_broadcast_intent(&intent);
 }
 
-static void window_tile_inspector_auto_set_buttons(rct_window * w)
+static void window_tile_inspector_auto_set_buttons()
 {
     auto intent = Intent(INTENT_ACTION_SET_TILE_INSPECTOR_BUTTONS);
     context_broadcast_intent(&intent);
@@ -140,10 +146,10 @@ sint32 tile_inspector_insert_corrupt_at(sint32 x, sint32 y, sint16 elementIndex,
 
             if (tileInspectorWindow->selected_list_item == elementIndex)
             {
-                window_tile_inspector_set_page(tileInspectorWindow, TILE_INSPECTOR_PAGE_CORRUPT);
+                window_tile_inspector_set_page(TILE_INSPECTOR_PAGE_CORRUPT);
             }
 
-            window_tile_inspector_auto_set_buttons(tileInspectorWindow);
+            window_tile_inspector_auto_set_buttons();
             window_invalidate(tileInspectorWindow);
         }
     }
@@ -183,10 +189,10 @@ sint32 tile_inspector_remove_element_at(sint32 x, sint32 y, sint16 elementIndex,
             else if (tileInspectorWindow->selected_list_item == elementIndex)
             {
                 tileInspectorWindow->selected_list_item = -1;
-                window_tile_inspector_set_page(tileInspectorWindow, TILE_INSPECTOR_PAGE_DEFAULT);
+                window_tile_inspector_set_page(TILE_INSPECTOR_PAGE_DEFAULT);
             }
 
-            window_tile_inspector_auto_set_buttons(tileInspectorWindow);
+            window_tile_inspector_auto_set_buttons();
             window_invalidate(tileInspectorWindow);
         }
     }
@@ -214,7 +220,7 @@ sint32 tile_inspector_swap_elements_at(sint32 x, sint32 y, sint16 first, sint16 
             else if (tileInspectorWindow->selected_list_item == second)
                 tileInspectorWindow->selected_list_item = first;
 
-            window_tile_inspector_auto_set_buttons(tileInspectorWindow);
+            window_tile_inspector_auto_set_buttons();
             window_invalidate(tileInspectorWindow);
         }
     }
@@ -248,9 +254,34 @@ sint32 tile_inspector_rotate_element_at(sint32 x, sint32 y, sint32 elementIndex,
             tileElement->properties.path.edges |= ((pathEdges << 1) | (pathEdges >> 3)) & 0x0F;
             tileElement->properties.path.edges |= ((pathCorners << 1) | (pathCorners >> 3)) & 0xF0;
             break;
+        case TILE_ELEMENT_TYPE_ENTRANCE:
+        {
+            // Update element rotation
+            newRotation = tile_element_get_direction_with_offset(tileElement, 1);
+            tileElement->type &= ~TILE_ELEMENT_DIRECTION_MASK;
+            tileElement->type |= newRotation;
+
+            // Update ride's known entrance/exit rotation
+            Ride * ride         = get_ride(tileElement->properties.entrance.ride_index);
+            uint8  stationIndex = tileElement->properties.entrance.index;
+            auto   entrance     = ride_get_entrance_location(ride, stationIndex);
+            auto   exit         = ride_get_exit_location(ride, stationIndex);
+            uint8  entranceType = entrance_element_get_type(tileElement);
+            uint8  z            = tileElement->base_height;
+
+            // Make sure this is the correct entrance or exit
+            if (entranceType == ENTRANCE_TYPE_RIDE_ENTRANCE && entrance.x == x && entrance.y == y && entrance.z == z)
+            {
+                ride_set_entrance_location(ride, stationIndex, { entrance.x, entrance.y, entrance.z, newRotation });
+            }
+            else if (entranceType == ENTRANCE_TYPE_RIDE_EXIT && exit.x == x && exit.y == y && exit.z == z)
+            {
+                ride_set_exit_location(ride, stationIndex, { exit.x, exit.y, exit.z, newRotation });
+            }
+            break;
+        }
         case TILE_ELEMENT_TYPE_TRACK:
         case TILE_ELEMENT_TYPE_SMALL_SCENERY:
-        case TILE_ELEMENT_TYPE_ENTRANCE:
         case TILE_ELEMENT_TYPE_WALL:
             newRotation = tile_element_get_direction_with_offset(tileElement, 1);
             tileElement->type &= ~TILE_ELEMENT_DIRECTION_MASK;
@@ -285,6 +316,39 @@ sint32 tile_inspector_paste_element_at(sint32 x, sint32 y, rct_tile_element elem
 
     if (flags & GAME_COMMAND_FLAG_APPLY)
     {
+        // Check if the element to be pasted refers to a banner index
+        sint32 bannerIndex = tile_element_get_banner_index(&element);
+        if (bannerIndex != BANNER_INDEX_NULL)
+        {
+            // The element to be pasted refers to a banner index - make a copy of it
+            sint32 newBannerIndex = create_new_banner(flags);
+            if (newBannerIndex == BANNER_NULL)
+            {
+                return MONEY32_UNDEFINED;
+            }
+            rct_banner & newBanner = gBanners[newBannerIndex];
+            newBanner              = gBanners[bannerIndex];
+            newBanner.x            = x;
+            newBanner.y            = y;
+
+            // Use the new banner index
+            tile_element_set_banner_index(&element, newBannerIndex);
+
+            // Duplicate user string if needed
+            rct_string_id stringIdx = newBanner.string_idx;
+            if (is_user_string_id(stringIdx))
+            {
+                utf8 buffer[USER_STRING_MAX_LENGTH];
+                format_string(buffer, USER_STRING_MAX_LENGTH, stringIdx, nullptr);
+                rct_string_id newStringIdx = user_string_allocate(USER_STRING_DUPLICATION_PERMITTED, buffer);
+                if (newStringIdx == 0)
+                {
+                    return MONEY32_UNDEFINED;
+                }
+                gBanners[newBannerIndex].string_idx = newStringIdx;
+            }
+        }
+
         rct_tile_element * const pastedElement = tile_element_insert(x, y, element.base_height, 0);
 
         bool lastForTile = tile_element_is_last_for_tile(pastedElement);
@@ -309,7 +373,7 @@ sint32 tile_inspector_paste_element_at(sint32 x, sint32 y, rct_tile_element elem
             else if (tileInspectorWindow->selected_list_item >= newIndex)
                 tileInspectorWindow->selected_list_item++;
 
-            window_tile_inspector_auto_set_buttons(tileInspectorWindow);
+            window_tile_inspector_auto_set_buttons();
             window_invalidate(tileInspectorWindow);
         }
     }
@@ -364,9 +428,9 @@ sint32 tile_inspector_sort_elements_at(sint32 x, sint32 y, sint32 flags)
         rct_window * const tileInspectorWindow = window_find_by_class(WC_TILE_INSPECTOR);
         if (tileInspectorWindow != nullptr && (uint32)x == windowTileInspectorTileX && (uint32)y == windowTileInspectorTileY)
         {
-            window_tile_inspector_set_page(tileInspectorWindow, TILE_INSPECTOR_PAGE_DEFAULT);
+            window_tile_inspector_set_page(TILE_INSPECTOR_PAGE_DEFAULT);
             tileInspectorWindow->selected_list_item = -1;
-            window_tile_inspector_auto_set_buttons(tileInspectorWindow);
+            window_tile_inspector_auto_set_buttons();
             window_invalidate(tileInspectorWindow);
         }
     }
@@ -389,6 +453,28 @@ sint32 tile_inspector_any_base_height_offset(sint32 x, sint32 y, sint16 elementI
 
     if (flags & GAME_COMMAND_FLAG_APPLY)
     {
+        if (tile_element_get_type(tileElement) == TILE_ELEMENT_TYPE_ENTRANCE)
+        {
+            uint8 entranceType = tileElement->properties.entrance.type;
+            if (entranceType != ENTRANCE_TYPE_PARK_ENTRANCE)
+            {
+                // Update the ride's known entrance or exit height
+                Ride * ride          = get_ride(tileElement->properties.entrance.ride_index);
+                uint8  entranceIndex = tileElement->properties.entrance.index;
+                auto   entrance      = ride_get_entrance_location(ride, entranceIndex);
+                auto   exit          = ride_get_exit_location(ride, entranceIndex);
+                uint8 z = tileElement->base_height;
+
+                // Make sure this is the correct entrance or exit
+                if (entranceType == ENTRANCE_TYPE_RIDE_ENTRANCE && entrance.x == x && entrance.y == y && entrance.z == z)
+                    ride_set_entrance_location(
+                        ride, entranceIndex, { entrance.x, entrance.y, z + heightOffset, entrance.direction });
+                else if (entranceType == ENTRANCE_TYPE_RIDE_EXIT && exit.x == x && exit.y == y && exit.z == z)
+                    ride_set_exit_location(
+                        ride, entranceIndex, { exit.x, exit.y, z + heightOffset, exit.direction });
+            }
+        }
+
         tileElement->base_height += heightOffset;
         tileElement->clearance_height += heightOffset;
 
@@ -600,15 +686,10 @@ sint32 tile_inspector_entrance_make_usable(sint32 x, sint32 y, sint32 elementInd
         switch (entranceElement->properties.entrance.type)
         {
         case ENTRANCE_TYPE_RIDE_ENTRANCE:
-            ride->entrances[stationIndex].x = x;
-            ride->entrances[stationIndex].y = y;
+            ride_set_entrance_location(ride, stationIndex, { x, y, entranceElement->base_height, (uint8)tile_element_get_direction(entranceElement) });
             break;
         case ENTRANCE_TYPE_RIDE_EXIT:
-            ride->exits[stationIndex].x = x;
-            ride->exits[stationIndex].y = y;
-
-            // TODO: Remove once mechanics don't assume exits always match the station heights
-            ride->station_heights[stationIndex] = entranceElement->base_height;
+            ride_set_exit_location(ride, stationIndex, { x, y, entranceElement->base_height, (uint8)tile_element_get_direction(entranceElement) });
             break;
         }
 

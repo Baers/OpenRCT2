@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <memory>
 #include <vector>
+#include "../Context.h"
 #include "../core/Collections.hpp"
 #include "../core/Console.hpp"
 #include "../core/FileStream.hpp"
@@ -31,7 +32,9 @@
 #include "../object/ObjectRepository.h"
 #include "../ParkImporter.h"
 #include "../ride/Station.h"
+#include "../scenario/Scenario.h"
 #include "../scenario/ScenarioSources.h"
+#include "../scenario/ScenarioRepository.h"
 #include "Tables.h"
 #include "../object/ObjectList.h"
 
@@ -61,6 +64,10 @@
 #include "../world/LargeScenery.h"
 #include "../world/Scenery.h"
 #include "../world/SmallScenery.h"
+
+static uint8 GetPathType(rct_tile_element * tileElement);
+static sint32 GetWallType(rct_tile_element * tileElement, sint32 edge);
+static uint8 GetWallColour(rct_tile_element * tileElement);
 
 class EntryList
 {
@@ -170,7 +177,7 @@ public:
         size_t dataSize = stream->GetLength() - stream->GetPosition();
         auto deleter_lambda = [dataSize](uint8 * ptr) { Memory::FreeArray(ptr, dataSize); };
         auto data = std::unique_ptr<uint8, decltype(deleter_lambda)>(stream->ReadArray<uint8>(dataSize), deleter_lambda);
-        auto decodedData = std::unique_ptr<uint8, void(*)(uint8*)>(Memory::Allocate<uint8>(sizeof(rct1_s4)), Memory::Free);
+        auto decodedData = std::unique_ptr<uint8, decltype(&Memory::Free<uint8>)>(Memory::Allocate<uint8>(sizeof(rct1_s4)), &Memory::Free<uint8>);
 
         size_t decodedSize;
         sint32 fileType = sawyercoding_detect_file_type(data.get(), dataSize);
@@ -234,6 +241,7 @@ public:
         ImportSavedView();
         FixLandOwnership();
         CountBlockSections();
+        determine_ride_entrance_and_exit_locations();
 
         // Importing the strings is done later on, although that approach needs looking at.
         //game_convert_strings_to_utf8();
@@ -263,7 +271,7 @@ public:
             dst->objective_arg_2 = _s4.scenario_objective_currency;
         dst->objective_arg_3 = _s4.scenario_objective_num_guests;
 
-        std::string name = std::string(_s4.scenario_name, sizeof(_s4.scenario_name));
+        auto name = rct2_to_utf8(_s4.scenario_name, RCT2_LANGUAGE_ID_ENGLISH_UK);
         std::string details;
 
         // TryGetById won't set this property if the scenario is not recognised,
@@ -333,7 +341,7 @@ private:
         String::Set(gScenarioFileName, sizeof(gScenarioFileName), GetRCT1ScenarioName().c_str());
 
         // Do map initialisation, same kind of stuff done when loading scenario editor
-        GetObjectManager()->UnloadAll();
+        OpenRCT2::GetContext()->GetObjectManager()->UnloadAll();
         game_init_all(mapSize);
         gS6Info.editor_step = EDITOR_STEP_OBJECT_SELECTION;
         gParkFlags |= PARK_FLAGS_SHOW_REAL_GUEST_NAMES;
@@ -480,10 +488,7 @@ private:
             switch (tile_element_get_type(tileElement)) {
             case TILE_ELEMENT_TYPE_PATH:
             {
-                uint8 pathColour = tile_element_get_direction(tileElement);
-                uint8 pathType   = footpath_element_get_type(tileElement);
-
-                pathType = (pathType << 2) | pathColour;
+                uint8 pathType = GetPathType(tileElement);
                 uint8 pathAdditionsType = tileElement->properties.path.additions & 0x0F;
 
                 AddEntryForPath(pathType);
@@ -498,17 +503,12 @@ private:
                 break;
             case TILE_ELEMENT_TYPE_WALL:
             {
-                uint8  var_05 = tileElement->properties.wall.colour_3;
-                uint16 var_06 = tileElement->properties.wall.colour_1 |
-                               (tileElement->properties.wall.animation << 8);
-
                 for (sint32 edge = 0; edge < 4; edge++)
                 {
-                    sint32 typeA = (var_05 >> (edge * 2)) & 3;
-                    sint32 typeB = (var_06 >> (edge * 4)) & 0x0F;
-                    if (typeB != 0x0F)
+                    sint32 type = GetWallType(tileElement, edge);
+
+                    if (type != -1)
                     {
-                        uint8 type = typeA | (typeB << 2);
                         AddEntryForWall(type);
                     }
                 }
@@ -548,10 +548,11 @@ private:
             std::vector<const char *> objects = RCT1::GetSceneryObjects(sceneryTheme);
             for (const char * objectName : objects)
             {
-                const rct_object_entry * foundEntry = object_list_find_by_name(objectName);
-                if (foundEntry != nullptr)
+                auto objectRepository = OpenRCT2::GetContext()->GetObjectRepository();
+                auto foundObject = objectRepository->FindObject(objectName);
+                if (foundObject != nullptr)
                 {
-                    uint8 objectType = object_entry_get_type(foundEntry);
+                    uint8 objectType = object_entry_get_type(&foundObject->ObjectEntry);
                     switch (objectType) {
                     case OBJECT_TYPE_SMALL_SCENERY:
                     case OBJECT_TYPE_LARGE_SCENERY:
@@ -792,8 +793,17 @@ private:
 
             dst->train_at_station[i] = src->station_depart[i];
 
-            dst->entrances[i] = src->entrance[i];
-            dst->exits[i] = src->exit[i];
+            // Direction is fixed later.
+            if (src->entrance[i].xy == RCT_XY8_UNDEFINED)
+                ride_clear_entrance_location(dst, i);
+            else
+                ride_set_entrance_location(dst, i, { src->entrance[i].x, src->entrance[i].y, src->station_height[i] / 2, 0});
+
+            if (src->exit[i].xy == RCT_XY8_UNDEFINED)
+                ride_clear_exit_location(dst, i);
+            else
+                ride_set_exit_location(dst, i, { src->exit[i].x, src->exit[i].y, src->station_height[i] / 2, 0});
+
             dst->queue_time[i] = src->queue_time[i];
             dst->last_peep_in_queue[i] = src->last_peep_in_queue[i];
             dst->queue_length[i] = src->num_peeps_in_queue[i];
@@ -806,8 +816,8 @@ private:
         {
             dst->station_starts[i].xy = RCT_XY8_UNDEFINED;
             dst->train_at_station[i] = 255;
-            dst->entrances[i].xy = RCT_XY8_UNDEFINED;
-            dst->exits[i].xy = RCT_XY8_UNDEFINED;
+            ride_clear_entrance_location(dst, i);
+            ride_clear_exit_location(dst, i);
             dst->last_peep_in_queue[i] = SPRITE_INDEX_NULL;
         }
 
@@ -1411,9 +1421,9 @@ private:
         dst->next_z = src->next_z / 2;
         dst->next_var_29 = src->next_var_29;
         dst->var_37 = src->var_37;
-        dst->var_42 = src->var_42;
-        dst->var_73 = src->var_73;
-        dst->var_EF = src->var_EF;
+        dst->time_to_consume = src->time_to_consume;
+        dst->step_progress = src->step_progress;
+        dst->vandalism_seen = src->vandalism_seen;
 
         dst->type = src->type;
 
@@ -1488,7 +1498,7 @@ private:
 
         dst->surroundings_thought_timeout = src->surroundings_thought_timeout;
         dst->angriness = src->angriness;
-        dst->var_F4 = src->var_F4;
+        dst->time_lost = src->time_lost;
 
         for (size_t i = 0; i < 32; i++)
         {
@@ -1509,7 +1519,7 @@ private:
         dst->previous_ride = src->previous_ride;
         dst->previous_ride_time_out = src->previous_ride_time_out;
 
-        dst->var_C4 = 0;
+        dst->path_check_optimisation = 0;
         dst->guest_heading_to_ride_id = src->guest_heading_to_ride_id;
         // Doubles as staff orders
         dst->peep_is_lost_countdown = src->peep_is_lost_countdown;
@@ -1852,7 +1862,7 @@ private:
 
     void LoadObjects(uint8 objectType, const std::vector<const char *> &entries)
     {
-        IObjectManager * objectManager = GetObjectManager();
+        IObjectManager * objectManager = OpenRCT2::GetContext()->GetObjectManager();
 
         uint32 entryIndex = 0;
         for (const char * objectName : entries)
@@ -1901,12 +1911,12 @@ private:
 
     void GetInvalidObjects(uint8 objectType, const std::vector<const char *> &entries, std::vector<rct_object_entry> &missingObjects)
     {
-        IObjectRepository * objectRepository = GetObjectRepository();
+        IObjectRepository * objectRepository = OpenRCT2::GetContext()->GetObjectRepository();
         for (const char * objectName : entries)
         {
             rct_object_entry entry;
             entry.flags = 0x00008000 + objectType;
-            std::copy_n(objectName, 8, entry.name);
+            std::copy_n(objectName, DAT_NAME_LENGTH, entry.name);
             entry.checksum = 0;
             
             const ObjectRepositoryItem * ori = objectRepository->FindObject(&entry);
@@ -2418,35 +2428,27 @@ private:
         {
             if (tileElement->base_height != 255)
             {
-                switch (tile_element_get_type(tileElement)) {
+                // This skips walls, which are fixed later.
+                switch (tile_element_get_type(tileElement))
+                {
                 case TILE_ELEMENT_TYPE_SMALL_SCENERY:
                     colour = RCT1::GetColour(scenery_small_get_primary_colour(tileElement));
                         scenery_small_set_primary_colour(tileElement, colour);
 
                     // Copied from [rct2: 0x006A2956]
                     switch (tileElement->properties.scenery.type) {
-                    case 157: // TGE1 (Geometric Sculpture)
-                    case 162: // TGE2 (Geometric Sculpture)
-                    case 168: // TGE3 (Geometric Sculpture)
-                    case 170: // TGE4 (Geometric Sculpture)
-                    case 171: // TGE5 (Geometric Sculpture)
+                    case RCT1_SCENERY_GEOMETRIC_SCULPTURE_1:
+                    case RCT1_SCENERY_GEOMETRIC_SCULPTURE_2:
+                    case RCT1_SCENERY_GEOMETRIC_SCULPTURE_3:
+                    case RCT1_SCENERY_GEOMETRIC_SCULPTURE_4:
+                    case RCT1_SCENERY_GEOMETRIC_SCULPTURE_5:
                         scenery_small_set_secondary_colour(tileElement, COLOUR_WHITE);
                         break;
-                    case 65:
-                    case 68:
+                    case RCT1_SCENERY_TULIPS_1:
+                    case RCT1_SCENERY_TULIPS_2:
                         scenery_small_set_primary_colour(tileElement, COLOUR_BRIGHT_RED);
                         scenery_small_set_secondary_colour(tileElement, COLOUR_YELLOW);
                     }
-                    break;
-                case TILE_ELEMENT_TYPE_WALL:
-                    colour = ((tileElement->type & 0xC0) >> 3) |
-                             ((tileElement->properties.wall.type & 0xE0) >> 5);
-                    colour = RCT1::GetColour(colour);
-
-                    tileElement->type &= 0x3F;
-                    tileElement->properties.wall.type &= 0x1F;
-                    tileElement->type |= (colour & 0x18) << 3;
-                    tileElement->properties.wall.type |= (colour & 7) << 5;
                     break;
                 case TILE_ELEMENT_TYPE_LARGE_SCENERY:
                     colour = RCT1::GetColour(scenery_large_get_primary_colour(tileElement));
@@ -2486,22 +2488,19 @@ private:
             case TILE_ELEMENT_TYPE_PATH:
             {
                 // Type
-                uint8 pathColour = tileElement->type & 3;
-                uint8 pathType   = footpath_element_get_type(tileElement);
-
-                pathType = (pathType << 2) | pathColour;
+                uint8 pathType = GetPathType(tileElement);
                 uint8 entryIndex = _pathTypeToEntryMap[pathType];
 
-                tileElement->type &= 0xFC;
-                tileElement->flags &= ~0x60;
-                tileElement->flags &= ~TILE_ELEMENT_FLAG_BROKEN;
-                tileElement->properties.path.type &= 0x0F;
-                footpath_scenery_set_is_ghost(tileElement, false);
+                tileElement->type &= ~TILE_ELEMENT_DIRECTION_MASK;
+                tileElement->flags &= ~(TILE_ELEMENT_FLAG_BROKEN | TILE_ELEMENT_FLAG_INDESTRUCTIBLE_TRACK_PIECE);
+
+                footpath_element_set_type(tileElement, entryIndex);
                 if (RCT1::PathIsQueue(pathType))
                 {
-                    tileElement->type |= 1;
+                    footpath_element_set_queue(tileElement);
                 }
-                tileElement->properties.path.type |= entryIndex << 4;
+
+                footpath_scenery_set_is_ghost(tileElement, false);
 
                 // Additions
                 uint8 additionType = footpath_element_get_path_scenery(tileElement);
@@ -2553,25 +2552,25 @@ private:
                         rct_tile_element originalTileElement = *tileElement;
                         tile_element_remove(tileElement);
 
-                        uint8 var_05 = originalTileElement.properties.wall.colour_3;
-                        uint16 var_06 = originalTileElement.properties.wall.colour_1 |
-                                       (originalTileElement.properties.wall.animation << 8);
-
                         for (sint32 edge = 0; edge < 4; edge++)
                         {
-                            sint32 typeA = (var_05 >> (edge * 2)) & 3;
-                            sint32 typeB = (var_06 >> (edge * 4)) & 0x0F;
-                            if (typeB != 0x0F)
+                            sint32 type = GetWallType(&originalTileElement, edge);
+
+                            if (type != -1)
                             {
-                                sint32 type = typeA | (typeB << 2);
-                                sint32 colourA = ((originalTileElement.type & 0xC0) >> 3) |
-                                               (originalTileElement.properties.wall.type >> 5);
+                                sint32 colourA = RCT1::GetColour(GetWallColour(&originalTileElement));
                                 sint32 colourB = 0;
                                 sint32 colourC = 0;
-                                ConvertWall(&type, &colourA, &colourB, &colourC);
+                                ConvertWall(&type, &colourA, &colourB);
 
                                 type = _wallTypeToEntryMap[type];
-                                wall_place(type, x * 32, y * 32, 0, edge, colourA, colourB, colourC, 169);
+                                const uint8 flags =
+                                    GAME_COMMAND_FLAG_APPLY |
+                                    GAME_COMMAND_FLAG_ALLOW_DURING_PAUSED |
+                                    GAME_COMMAND_FLAG_5 |
+                                    GAME_COMMAND_FLAG_PATH_SCENERY;
+
+                                wall_place(type, x * 32, y * 32, 0, edge, colourA, colourB, colourC, flags);
                             }
                         }
                         break;
@@ -2584,7 +2583,7 @@ private:
         gCheatsBuildInPauseMode = oldCheatValue;
     }
 
-    void ConvertWall(sint32 * type, sint32 * colourA, sint32 * colourB, sint32 * colourC)
+    void ConvertWall(sint32 * type, sint32 * colourA, sint32 * colourB)
     {
         switch (*type) {
         case RCT1_WALL_TYPE_WOODEN_PANEL_FENCE:
@@ -2757,10 +2756,8 @@ private:
 
     std::string GetUserString(rct_string_id stringId)
     {
-        utf8 buffer[128] = { 0 };
         const char * originalString = _s4.string_table[(stringId - USER_STRING_START) % 1024];
-        rct2_to_utf8(buffer, originalString);
-        return std::string(buffer);
+        return rct2_to_utf8(originalString, RCT2_LANGUAGE_ID_ENGLISH_UK);
     }
 
     void FixLandOwnership()
@@ -2879,3 +2876,34 @@ ParkLoadResult * load_from_sc4(const utf8 * path)
     return result;
 }
 
+static uint8 GetPathType(rct_tile_element * tileElement)
+{
+    uint8 pathColour = tileElement->type & 3;
+    uint8 pathType   = (tileElement->properties.path.type & FOOTPATH_PROPERTIES_TYPE_MASK) >> 2;
+
+    pathType = pathType | pathColour;
+    return pathType;
+}
+
+static sint32 GetWallType(rct_tile_element * tileElement, sint32 edge)
+{
+    uint8 var_05 = tileElement->properties.wall.colour_3;
+    uint16 var_06 = tileElement->properties.wall.colour_1 | (tileElement->properties.wall.animation << 8);
+
+    sint32 typeA = (var_05 >> (edge * 2)) & 3;
+    sint32 typeB = (var_06 >> (edge * 4)) & 0x0F;
+
+    if (typeB != 0x0F)
+    {
+        return typeA | (typeB << 2);
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+static uint8 GetWallColour(rct_tile_element * tileElement)
+{
+    return ((tileElement->type & 0xC0) >> 3) | ((tileElement->properties.wall.type & 0xE0) >> 5);
+}

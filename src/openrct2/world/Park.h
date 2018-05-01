@@ -18,14 +18,16 @@
 #define _PARK_H_
 
 #include "../common.h"
-#include "Map.h"
 
 #define DECRYPT_MONEY(money) ((money32)rol32((money) ^ 0xF4EC9621, 13))
 #define ENCRYPT_MONEY(money) ((money32)(ror32((money), 13) ^ 0xF4EC9621))
 
 #define MAX_ENTRANCE_FEE MONEY(200,00)
 
-enum {
+struct rct_peep;
+
+enum : uint32
+{
     PARK_FLAGS_PARK_OPEN = (1 << 0),
     PARK_FLAGS_SCENARIO_COMPLETE_NAME_INPUT = (1 << 1),
     PARK_FLAGS_FORBID_LANDSCAPE_CHANGES = (1 << 2),
@@ -109,7 +111,6 @@ sint32 map_buy_land_rights(sint32 x0, sint32 y0, sint32 x1, sint32 y1, sint32 se
 
 void game_command_set_park_entrance_fee(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp);
 void game_command_set_park_open(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp);
-void game_command_set_park_name(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp);
 void game_command_buy_land_rights(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp);
 
 money16 park_get_entrance_fee();

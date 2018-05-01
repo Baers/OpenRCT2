@@ -17,7 +17,9 @@
 #pragma once
 
 #include "common.h"
-#include "scenario/Scenario.h"
+
+struct ParkLoadResult;
+struct rct_s6_data;
 
 enum GAME_COMMAND
 {
@@ -55,22 +57,22 @@ enum GAME_COMMAND
     GAME_COMMAND_SET_STAFF_PATROL,
     GAME_COMMAND_FIRE_STAFF_MEMBER,
     GAME_COMMAND_SET_STAFF_ORDER,
-    GAME_COMMAND_SET_PARK_NAME,
+    GAME_COMMAND_SET_PARK_NAME, // GA
     GAME_COMMAND_SET_PARK_OPEN,
     GAME_COMMAND_BUY_LAND_RIGHTS,
     GAME_COMMAND_PLACE_PARK_ENTRANCE, // GA
     GAME_COMMAND_REMOVE_PARK_ENTRANCE,
     GAME_COMMAND_SET_MAZE_TRACK,
     GAME_COMMAND_SET_PARK_ENTRANCE_FEE, // GA
-    GAME_COMMAND_SET_STAFF_COLOUR,
+    GAME_COMMAND_SET_STAFF_COLOUR, // GA
     GAME_COMMAND_PLACE_WALL,
     GAME_COMMAND_REMOVE_WALL,
     GAME_COMMAND_PLACE_LARGE_SCENERY,
     GAME_COMMAND_REMOVE_LARGE_SCENERY,
-    GAME_COMMAND_SET_CURRENT_LOAN,
-    GAME_COMMAND_SET_RESEARCH_FUNDING,
+    GAME_COMMAND_SET_CURRENT_LOAN, // GA
+    GAME_COMMAND_SET_RESEARCH_FUNDING, // GA
     GAME_COMMAND_PLACE_TRACK_DESIGN,
-    GAME_COMMAND_START_MARKETING_CAMPAIGN,
+    GAME_COMMAND_START_MARKETING_CAMPAIGN, // GA
     GAME_COMMAND_PLACE_MAZE_DESIGN,
     GAME_COMMAND_PLACE_BANNER,
     GAME_COMMAND_REMOVE_BANNER,
@@ -80,8 +82,8 @@ enum GAME_COMMAND
     GAME_COMMAND_SET_BANNER_COLOUR,
     GAME_COMMAND_SET_LAND_OWNERSHIP,
     GAME_COMMAND_CLEAR_SCENERY,
-    GAME_COMMAND_SET_BANNER_NAME,
-    GAME_COMMAND_SET_SIGN_NAME,
+    GAME_COMMAND_SET_BANNER_NAME, // GA
+    GAME_COMMAND_SET_SIGN_NAME, // GA
     GAME_COMMAND_SET_BANNER_STYLE,
     GAME_COMMAND_SET_SIGN_STYLE,
     GAME_COMMAND_SET_PLAYER_GROUP,
@@ -97,7 +99,7 @@ enum GAME_COMMAND
     GAME_COMMAND_COUNT
 };
 
-enum
+enum : uint32
 {
     GAME_COMMAND_FLAG_APPLY               = (1 << 0), // If this flag is set, the command is applied, otherwise only the cost is retrieved
     GAME_COMMAND_FLAG_2                   = (1 << 2),
@@ -179,11 +181,11 @@ bool game_is_not_paused();
 void save_game();
 void * create_save_game_as_intent();
 void save_game_as();
-void handle_park_load_failure_with_title_opt(const ParkLoadResult * result, const std::string & path, bool loadTitleFirst);
-void handle_park_load_failure(const ParkLoadResult * result, const std::string & path);
 void game_autosave();
 void game_convert_strings_to_utf8();
 void game_convert_news_items_to_utf8();
 void game_convert_strings_to_rct2(rct_s6_data * s6);
+void utf8_to_rct2_self(char * buffer, size_t length);
+void rct2_to_utf8_self(char * buffer, size_t length);
 void game_fix_save_vars();
 void game_init_all(sint32 mapSize);

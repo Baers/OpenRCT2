@@ -36,6 +36,7 @@
 #include "TrackData.h"
 #include "TrackDesign.h"
 #include "TrackDesignRepository.h"
+#include "Station.h"
 
 
 #define TRACK_MAX_SAVED_TILE_ELEMENTS 1500
@@ -126,7 +127,7 @@ void track_design_save_reset_scenery()
     gfx_invalidate_screen();
 }
 
-static void track_design_save_callback(sint32 result, const utf8 * path)
+static void track_design_save_callback(sint32 result, [[maybe_unused]] const utf8 * path)
 {
     free(_trackDesign->track_elements);
     free(_trackDesign->entrance_elements);
@@ -429,7 +430,7 @@ static void track_design_save_pop_tile_element(sint32 x, sint32 y, rct_tile_elem
  *
  *  rct2: 0x006D2FDD
  */
-static void track_design_save_pop_tile_element_desc(const rct_object_entry *entry, sint32 x, sint32 y, sint32 z, uint8 flags, uint8 primaryColour, uint8 secondaryColour)
+static void track_design_save_pop_tile_element_desc(const rct_object_entry *entry, sint32 x, sint32 y, sint32 z, uint8 flags)
 {
     size_t removeIndex = SIZE_MAX;
     for (size_t i = 0; i < _trackSavedTileElementsDescCount; i++) {
@@ -465,11 +466,8 @@ static void track_design_save_remove_scenery(sint32 x, sint32 y, rct_tile_elemen
     flags |= tileElement->type & 3;
     flags |= (tileElement->type & 0xC0) >> 4;
 
-    uint8 primaryColour = scenery_small_get_primary_colour(tileElement);
-    uint8 secondaryColour = scenery_small_get_secondary_colour(tileElement);
-
     track_design_save_pop_tile_element(x, y, tileElement);
-    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags, primaryColour, secondaryColour);
+    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags);
 }
 
 static void track_design_save_remove_large_scenery(sint32 x, sint32 y, rct_tile_element *tileElement)
@@ -506,10 +504,7 @@ static void track_design_save_remove_large_scenery(sint32 x, sint32 y, rct_tile_
             if (sequence == 0)
             {
                 uint8 flags = tileElement->type & 3;
-                uint8 primaryColour = scenery_large_get_primary_colour(tileElement);
-                uint8 secondaryColour = scenery_large_get_secondary_colour(tileElement);
-
-                track_design_save_pop_tile_element_desc(entry, x, y, z, flags, primaryColour, secondaryColour);
+                track_design_save_pop_tile_element_desc(entry, x, y, z, flags);
             }
             track_design_save_pop_tile_element(x, y, tileElement);
         }
@@ -525,11 +520,8 @@ static void track_design_save_remove_wall(sint32 x, sint32 y, rct_tile_element *
     flags |= tileElement->type & 3;
     flags |= wall_get_tertiary_colour(tileElement) << 2;
 
-    uint8 secondaryColour = wall_get_secondary_colour(tileElement);
-    uint8 primaryColour = wall_get_primary_colour(tileElement);
-
     track_design_save_pop_tile_element(x, y, tileElement);
-    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags, primaryColour, secondaryColour);
+    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags);
 }
 
 static void track_design_save_remove_footpath(sint32 x, sint32 y, rct_tile_element *tileElement)
@@ -544,7 +536,7 @@ static void track_design_save_remove_footpath(sint32 x, sint32 y, rct_tile_eleme
     flags |= (tileElement->type & FOOTPATH_ELEMENT_TYPE_FLAG_IS_QUEUE) << 7;
 
     track_design_save_pop_tile_element(x, y, tileElement);
-    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags, 0, 0);
+    track_design_save_pop_tile_element_desc(entry, x, y, tileElement->base_height, flags);
 }
 
 /**
@@ -860,10 +852,10 @@ static bool track_design_save_to_td6_for_maze(uint8 rideIndex, rct_track_td6 *td
         x = 0;
     }
 
-    Ride *ride = get_ride(rideIndex);
-    LocationXY8 location = ride->entrances[0];
+    TileCoordsXYZD location = ride_get_entrance_location(rideIndex, 0);
 
-    if (location.xy == RCT_XY8_UNDEFINED) {
+    if (location.isNull())
+    {
         gGameCommandErrorText = STR_TRACK_TOO_LARGE_OR_TOO_MUCH_SCENERY;
         SafeFree(td6->maze_elements);
         return false;
@@ -888,11 +880,12 @@ static bool track_design_save_to_td6_for_maze(uint8 rideIndex, rct_track_td6 *td
     maze++;
     numMazeElements++;
 
-    location = ride->exits[0];
-    if (location.xy == RCT_XY8_UNDEFINED) {
+    location = ride_get_entrance_location(rideIndex, 0);
+    if (location.isNull())
+    {
         gGameCommandErrorText = STR_TRACK_TOO_LARGE_OR_TOO_MUCH_SCENERY;
         SafeFree(td6->maze_elements);
-        return 0;
+        return false;
     }
 
     x = location.x * 32;
@@ -1059,14 +1052,14 @@ static bool track_design_save_to_td6_for_tracked_ride(uint8 rideIndex, rct_track
         for (sint32 station_index = 0; station_index < RCT12_MAX_STATIONS_PER_RIDE; station_index++) {
             z = ride->station_heights[station_index];
 
-            LocationXY8 location;
+            TileCoordsXYZD location;
             if (i == 0) {
-                location = ride->entrances[station_index];
+                location = ride_get_entrance_location(rideIndex, station_index);
             } else {
-                location = ride->exits[station_index];
+                location = ride_get_exit_location(rideIndex, station_index);
             }
 
-            if (location.xy == RCT_XY8_UNDEFINED) {
+            if (location.isNull()) {
                 continue;
             }
 

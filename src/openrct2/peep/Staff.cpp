@@ -78,42 +78,6 @@ void staff_reset_modes()
     staff_update_greyed_patrol_areas();
 }
 
-/**
- *
- *  rct2: 0x00669E55
- */
-void game_command_update_staff_colour(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, sint32 * esi, sint32 * edi,
-                                      sint32 * ebp)
-{
-    if (*ebx & GAME_COMMAND_FLAG_APPLY)
-    {
-        uint8 staffType = (*ebx >> 8) & 0xFF;
-        uint8 colour    = (*edx >> 8) & 0xFF;
-
-        // Client may send invalid data
-        bool ok = staff_set_colour(staffType, colour);
-        if (!ok)
-        {
-            *ebx = MONEY32_UNDEFINED;
-            return;
-        }
-
-        sint32     spriteIndex;
-        rct_peep * peep;
-        FOR_ALL_PEEPS(spriteIndex, peep)
-        {
-            if (peep->type == PEEP_TYPE_STAFF && peep->staff_type == staffType)
-            {
-                peep->tshirt_colour   = colour;
-                peep->trousers_colour = colour;
-            }
-        }
-    }
-
-    gfx_invalidate_screen();
-    *ebx = 0;
-}
-
 static inline void staff_autoposition_new_staff_member(rct_peep * newPeep)
 {
     // Find a location to place new staff member
@@ -271,7 +235,7 @@ static money32 staff_hire_new_staff_member(uint8 staff_type, uint8 flags, sint16
             newPeep->action_sprite_image_offset = 0;
             newPeep->no_action_frame_no         = 0;
             newPeep->action_sprite_type         = 0;
-            newPeep->var_C4                     = 0;
+            newPeep->path_check_optimisation                     = 0;
             newPeep->type                       = PEEP_TYPE_STAFF;
             newPeep->outside_of_park            = 0;
             newPeep->peep_flags                 = 0;
@@ -369,7 +333,7 @@ static money32 staff_hire_new_staff_member(uint8 staff_type, uint8 flags, sint16
             // Staff energy determines their walking speed
             newPeep->energy        = 0x60;
             newPeep->energy_target = 0x60;
-            newPeep->var_E2        = 0;
+            newPeep->staff_mowing_timeout        = 0;
 
             peep_update_name_sort(newPeep);
 
@@ -553,14 +517,6 @@ void game_command_fire_staff_member(sint32 * eax, sint32 * ebx, sint32 * ecx, si
         peep_sprite_remove(peep);
     }
     *ebx = 0;
-}
-
-/**
- * Updates the colour of the given staff type.
- */
-void update_staff_colour(uint8 staffType, uint16 colour)
-{
-    game_do_command(0, (staffType << 8) | GAME_COMMAND_FLAG_APPLY, 0, (colour << 8) | 4, GAME_COMMAND_SET_STAFF_COLOUR, 0, 0);
 }
 
 /**
@@ -1071,7 +1027,7 @@ static sint32 staff_handyman_direction_rand_surface(rct_peep * peep, uint8 valid
  */
 static bool staff_path_finding_handyman(rct_peep * peep)
 {
-    peep->var_E2++;
+    peep->staff_mowing_timeout++;
 
     uint8 litterDirection = 0xFF;
     uint8 validDirections = staff_get_valid_patrol_directions(peep, peep->next_x, peep->next_y);
@@ -1082,7 +1038,7 @@ static bool staff_path_finding_handyman(rct_peep * peep)
     }
 
     uint8 direction = 0xFF;
-    if (litterDirection == 0xFF && (peep->staff_orders & STAFF_ORDERS_MOWING) && peep->var_E2 >= 12)
+    if (litterDirection == 0xFF && (peep->staff_orders & STAFF_ORDERS_MOWING) && peep->staff_mowing_timeout >= 12)
     {
         direction = staff_handyman_direction_to_uncut_grass(peep, validDirections);
     }
@@ -1209,13 +1165,10 @@ static uint8 staff_mechanic_direction_surface(rct_peep * peep)
 
     if ((peep->state == PEEP_STATE_ANSWERING || peep->state == PEEP_STATE_HEADING_TO_INSPECTION) && scenario_rand() & 1)
     {
-
-        Ride * ride = get_ride(peep->current_ride);
-
-        LocationXY8 location = ride->exits[peep->current_ride_station];
-        if (location.xy == RCT_XY8_UNDEFINED)
+        TileCoordsXYZD location = ride_get_exit_location(peep->current_ride, peep->current_ride_station);
+        if (location.isNull())
         {
-            location = ride->entrances[peep->current_ride_station];
+            location = ride_get_entrance_location(peep->current_ride, peep->current_ride_station);
         }
 
         LocationXY16 chosenTile = { static_cast<sint16>(location.x * 32), static_cast<sint16>(location.y * 32) };
@@ -1306,13 +1259,13 @@ static uint8 staff_mechanic_direction_path(rct_peep * peep, uint8 validDirection
     {
         /* Find location of the exit for the target ride station
          * or if the ride has no exit, the entrance. */
-        TileCoordsXYZD location = ride_get_exit_location_of_station(peep->current_ride, peep->current_ride_station);
-        if (location.x == LOCATION_NULL)
+        TileCoordsXYZD location = ride_get_exit_location(peep->current_ride, peep->current_ride_station);
+        if (location.isNull())
         {
-            location = ride_get_entrance_location_of_station(peep->current_ride, peep->current_ride_station);
+            location = ride_get_entrance_location(peep->current_ride, peep->current_ride_station);
 
             // If no entrance is present either. This is an incorrect state.
-            if (location.x == LOCATION_NULL)
+            if (location.isNull())
             {
                 return staff_mechanic_direction_path_rand(peep, pathDirections);
             }

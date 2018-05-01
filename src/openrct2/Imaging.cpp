@@ -21,6 +21,7 @@
 #include "core/FileStream.hpp"
 #include "core/Guard.hpp"
 #include "core/Memory.hpp"
+#include "drawing/Drawing.h"
 
 #include "Imaging.h"
 
@@ -289,12 +290,12 @@ namespace Imaging
     {
     }
 
-    static void PngWarning(png_structp png_ptr, const char * b)
+    static void PngWarning([[maybe_unused]] png_structp png_ptr, const char * b)
     {
         log_warning(b);
     }
 
-    static void PngError(png_structp png_ptr, const char * b)
+    static void PngError([[maybe_unused]] png_structp png_ptr, const char * b)
     {
         log_error(b);
     }

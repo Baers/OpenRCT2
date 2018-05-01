@@ -14,14 +14,12 @@
  *****************************************************************************/
 #pragma endregion
 
-#include "../core/Guard.hpp"
-
-#include "../platform/platform.h"
-#include "../OpenRCT2.h"
+#include <cstring>
 
 #include "../core/Console.hpp"
 #include "../core/Math.hpp"
 #include "../core/String.hpp"
+#include "../OpenRCT2.h"
 #include "CommandLine.hpp"
 
 #pragma region CommandLineArgEnumerator
@@ -514,7 +512,7 @@ namespace CommandLine
         }
     }
 
-    static bool HandleSpecialArgument(const char * argument)
+    static bool HandleSpecialArgument([[maybe_unused]] const char * argument)
     {
 #ifdef __APPLE__
         if (String::Equals(argument, "-NSDocumentRevisionsDebugMode"))
@@ -528,7 +526,6 @@ namespace CommandLine
 #endif
         return false;
     }
-
 
     const CommandLineOptionDefinition * FindOption(const CommandLineOptionDefinition * options, char shortName)
     {

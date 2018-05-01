@@ -38,6 +38,7 @@
 #include <openrct2/sprites.h>
 #include <openrct2/util/Util.h>
 #include <openrct2/windows/Intent.h>
+#include <openrct2/world/Park.h>
 
 #define AVAILABILITY_STRING_SIZE 256
 #define WH 382
@@ -928,15 +929,17 @@ static sint32 get_num_track_designs(ride_list_item item)
         }
     }
 
+    ITrackDesignRepository * repo = OpenRCT2::GetContext()->GetTrackDesignRepository();
+
     if (rideEntry != nullptr && RideGroupManager::RideTypeHasRideGroups(item.type))
     {
         const RideGroup * rideGroup = RideGroupManager::GetRideGroup(item.type, rideEntry);
-        ITrackDesignRepository * repo = GetTrackDesignRepository();
         return (sint32)repo->GetCountForRideGroup(item.type, rideGroup);
     }
-
-    ITrackDesignRepository * repo = GetTrackDesignRepository();
-    return (sint32)repo->GetCountForObjectEntry(item.type, String::ToStd(entryPtr));
+    else
+    {
+        return (sint32)repo->GetCountForObjectEntry(item.type, String::ToStd(entryPtr));
+    }
 }
 
 /**

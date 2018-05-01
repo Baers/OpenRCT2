@@ -239,15 +239,17 @@ sint32 calculate_park_rating()
     // Rides
     {
         sint32 i;
-        sint16 total_ride_uptime = 0, total_ride_intensity = 0, total_ride_excitement = 0;
+        sint32 total_ride_uptime = 0, total_ride_intensity = 0, total_ride_excitement = 0;
         sint32 num_rides, num_exciting_rides = 0;
         Ride* ride;
 
         num_rides = 0;
-        FOR_ALL_RIDES(i, ride) {
+        FOR_ALL_RIDES(i, ride)
+        {
             total_ride_uptime += 100 - ride->downtime;
 
-            if (ride->excitement != RIDE_RATING_UNDEFINED){
+            if (ride->excitement != RIDE_RATING_UNDEFINED)
+            {
                 total_ride_excitement += ride->excitement / 8;
                 total_ride_intensity += ride->intensity / 8;
                 num_exciting_rides++;
@@ -260,27 +262,30 @@ sint32 calculate_park_rating()
 
         result -= 100;
 
-        if (num_exciting_rides>0){
-            sint16 average_excitement = total_ride_excitement / num_exciting_rides;
-            sint16 average_intensity = total_ride_intensity / num_exciting_rides;
+        if (num_exciting_rides > 0)
+        {
+            sint32 average_excitement = total_ride_excitement / num_exciting_rides;
+            sint32 average_intensity = total_ride_intensity / num_exciting_rides;
 
             average_excitement -= 46;
-            if (average_excitement < 0){
+            if (average_excitement < 0)
+            {
                 average_excitement = -average_excitement;
             }
 
             average_intensity -= 65;
-            if (average_intensity < 0){
+            if (average_intensity < 0)
+            {
                 average_intensity = -average_intensity;
             }
 
-            average_excitement = Math::Min((sint16)(average_excitement / 2), (sint16)50);
-            average_intensity = Math::Min((sint16)(average_intensity / 2), (sint16)50);
+            average_excitement = Math::Min((average_excitement / 2), 50);
+            average_intensity = Math::Min((average_intensity / 2), 50);
             result += 100 - average_excitement - average_intensity;
         }
 
-        total_ride_excitement = Math::Min((sint16)1000, total_ride_excitement);
-        total_ride_intensity = Math::Min((sint16)1000, total_ride_intensity);
+        total_ride_excitement = Math::Min(1000, total_ride_excitement);
+        total_ride_intensity = Math::Min(1000, total_ride_intensity);
         result -= 200 - ((total_ride_excitement + total_ride_intensity) / 10);
     }
 
@@ -501,7 +506,6 @@ rct_peep *park_generate_new_guest()
             peep->destination_y = (peep->y & 0xFFE0) + 16;
 
             peep->destination_tolerance = 5;
-            peep->var_76 = 0;
             peep->direction = spawn.direction;
             peep->var_37 = 0;
             peep->state = PEEP_STATE_ENTERING_PARK;
@@ -655,7 +659,14 @@ void park_set_open(sint32 open)
  *
  *  rct2: 0x00669D4A
  */
-void game_command_set_park_open(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_set_park_open(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    [[maybe_unused]] sint32 * ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     if (!(*ebx & GAME_COMMAND_FLAG_APPLY)) {
         *ebx = 0;
@@ -773,93 +784,12 @@ void update_park_fences_around_tile(sint32 x, sint32 y)
 
 void park_set_name(const char *name)
 {
-    // Required else the pointer arithmetic in the game commands below could cause an access violation
-    char* newName = (char *)malloc(USER_STRING_MAX_LENGTH + 5);
-    strncpy(newName, name, USER_STRING_MAX_LENGTH);
-
-    gGameCommandErrorTitle = STR_CANT_RENAME_PARK;
-    game_do_command(1, GAME_COMMAND_FLAG_APPLY, 0, *((sint32*)(newName + 0)), GAME_COMMAND_SET_PARK_NAME, *((sint32*)(newName + 8)), *((sint32*)(newName + 4)));
-    game_do_command(2, GAME_COMMAND_FLAG_APPLY, 0, *((sint32*)(newName + 12)), GAME_COMMAND_SET_PARK_NAME, *((sint32*)(newName + 20)), *((sint32*)(newName + 16)));
-    game_do_command(0, GAME_COMMAND_FLAG_APPLY, 0, *((sint32*)(newName + 24)), GAME_COMMAND_SET_PARK_NAME, *((sint32*)(newName + 32)), *((sint32*)(newName + 28)));
-
-    free(newName);
-}
-
-/**
- *
- *  rct2: 0x00669C6D
- */
-void game_command_set_park_name(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
-{
-    rct_string_id newUserStringId;
-    char oldName[128];
-    static char newName[128];
-
-    sint32 nameChunkIndex = *eax & 0xFFFF;
-
-    gCommandExpenditureType = RCT_EXPENDITURE_TYPE_LANDSCAPING;
-    //if (*ebx & GAME_COMMAND_FLAG_APPLY) { // this check seems to be useless and causes problems in multiplayer
-        sint32 nameChunkOffset = nameChunkIndex - 1;
-        if (nameChunkOffset < 0)
-            nameChunkOffset = 2;
-        nameChunkOffset *= 12;
-        nameChunkOffset = Math::Min(nameChunkOffset, (sint32)Util::CountOf(newName) - 12);
-        memcpy(newName + nameChunkOffset + 0, edx, 4);
-        memcpy(newName + nameChunkOffset + 4, ebp, 4);
-        memcpy(newName + nameChunkOffset + 8, edi, 4);
-    //}
-
-    if (nameChunkIndex != 0) {
-        *ebx = 0;
-        return;
-    }
-
-    format_string(oldName, 128, gParkName, &gParkNameArgs);
-    if (strcmp(oldName, newName) == 0) {
-        *ebx = 0;
-        return;
-    }
-
-    if (newName[0] == 0) {
-        gGameCommandErrorText = STR_INVALID_RIDE_ATTRACTION_NAME;
-        *ebx = MONEY32_UNDEFINED;
-        return;
-    }
-
-    newUserStringId = user_string_allocate(USER_STRING_HIGH_ID_NUMBER, newName);
-    if (newUserStringId == 0) {
-        gGameCommandErrorText = STR_INVALID_NAME_FOR_PARK;
-        *ebx = MONEY32_UNDEFINED;
-        return;
-    }
-
-    if (*ebx & GAME_COMMAND_FLAG_APPLY) {
-        // Log park rename command if we are in multiplayer and logging is enabled
-        if ((network_get_mode() == NETWORK_MODE_CLIENT || network_get_mode() == NETWORK_MODE_SERVER) && gConfigNetwork.log_server_actions) {
-            // Get player name
-            int player_index = network_get_player_index(game_command_playerid);
-            const char* player_name = network_get_player_name(player_index);
-
-            char log_msg[256];
-            char* args[3] = {
-                (char *) player_name,
-                oldName,
-                newName
-            };
-            format_string(log_msg, 256, STR_LOG_PARK_NAME, args);
-            network_append_server_log(log_msg);
-        }
-
-        // Free the old ride name
+    auto nameId = user_string_allocate(USER_STRING_HIGH_ID_NUMBER, name);
+    if (nameId != 0)
+    {
         user_string_free(gParkName);
-        gParkName = newUserStringId;
-
-        gfx_invalidate_screen();
-    } else {
-        user_string_free(newUserStringId);
+        gParkName = nameId;
     }
-
-    *ebx = 0;
 }
 
 static money32 map_buy_land_rights_for_tile(sint32 x, sint32 y, sint32 setting, sint32 flags) {
@@ -1030,7 +960,8 @@ sint32 map_buy_land_rights(sint32 x0, sint32 y0, sint32 x1, sint32 y1, sint32 se
 *
 *  rct2: 0x006649BD
 */
-void game_command_buy_land_rights(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
+void game_command_buy_land_rights(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     sint32 flags = *ebx & 0xFFFF;
 

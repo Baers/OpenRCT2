@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <string>
+
 enum {
     NETWORK_MODE_NONE,
     NETWORK_MODE_CLIENT,
@@ -44,6 +46,8 @@ enum {
 #include "NetworkTypes.h"
 
 struct GameAction;
+struct rct_peep;
+struct LocationXYZ16;
 
 #ifndef DISABLE_NETWORK
 
@@ -51,7 +55,6 @@ struct GameAction;
 #include <list>
 #include <set>
 #include <memory>
-#include <string>
 #include <vector>
 #include <functional>
 #include <fstream>
@@ -171,6 +174,8 @@ public:
     std::string ServerProviderWebsite;
 
 private:
+    void CloseConnection();
+
     bool ProcessConnection(NetworkConnection& connection);
     void ProcessPacket(NetworkConnection& connection, NetworkPacket& packet);
     void AddClient(ITcpSocket * socket);
@@ -212,7 +217,14 @@ private:
         uint8 callback = 0;
         uint32 commandIndex = 0;
         bool operator<(const GameCommand& comp) const {
-            return tick < comp.tick && commandIndex < comp.commandIndex;
+            // First sort by tick
+            if (tick < comp.tick)
+                return true;
+            if (tick > comp.tick)
+                return false;
+
+            // If the ticks are equal sort by commandIndex
+            return commandIndex < comp.commandIndex;
         }
     };
 

@@ -14,19 +14,20 @@
  *****************************************************************************/
 #pragma endregion
 
+#include "Fonts.h"
 #include "FontFamilies.h"
 
 #ifndef NO_TTF
 
 TTFontFamily const TTFFamilyChineseSimplified =
 {
-    &TTFFontMingLiu,
+    &TTFFontSimSun,
     &TTFFontHeiti,
 };
 
 TTFontFamily const TTFFamilyChineseTraditional =
 {
-    &TTFFontSimSun,
+    &TTFFontMingLiu,
     &TTFFontLiHeiPro,
 };
 

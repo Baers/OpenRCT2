@@ -33,6 +33,11 @@ struct LocationXY8 {
 };
 assert_struct_size(LocationXY8, 2);
 
+struct sLocationXY8 {
+    sint8 x, y;
+};
+assert_struct_size(sLocationXY8, 2);
+
 struct LocationXY16 {
     sint16 x, y;
 };
@@ -45,23 +50,24 @@ struct LocationXYZ16 {
 assert_struct_size(LocationXYZ16, 6);
 #pragma pack(pop)
 
+constexpr sint32 COORDS_NULL = -1;
+
+
 /*
  * Tile coordinates use 1 x/y increment per tile.
  * Regular ('big', 'sprite') coordinates use 32 x/y increments per tile.
  * */
-struct TileCoordsXY
-{
-    sint32 x, y;
-};
-
 struct CoordsXY
 {
     sint32 x, y;
 };
 
-struct TileCoordsXYZ
+struct TileCoordsXY
 {
-    sint32 x, y, z;
+    TileCoordsXY() = default;
+    TileCoordsXY(sint32 x_, sint32 y_) : x(x_), y(y_) {}
+    explicit TileCoordsXY(CoordsXY c) : x(c.x / 32), y(c.y / 32) {}
+    sint32 x = 0, y = 0;
 };
 
 struct CoordsXYZ
@@ -69,16 +75,28 @@ struct CoordsXYZ
     sint32 x, y, z;
 };
 
+struct TileCoordsXYZ
+{
+    TileCoordsXYZ() = default;
+    TileCoordsXYZ(sint32 x_, sint32 y_, sint32 z_) : x(x_), y(y_), z(z_) {}
+    explicit TileCoordsXYZ(CoordsXYZ c) : x(c.x / 32), y(c.y / 32), z(c.z / 8) {}
+    sint32 x = 0, y = 0, z = 0;
+};
+
 struct TileCoordsXYZD
 {
     sint32 x, y, z;
     uint8 direction;
+
+    bool isNull() const { return x == COORDS_NULL; };
 };
 
 struct CoordsXYZD
 {
     sint32 x, y, z;
     uint8 direction;
+
+    bool isNull() const { return x == COORDS_NULL; };
 };
 
 

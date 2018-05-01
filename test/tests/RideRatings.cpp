@@ -6,6 +6,7 @@
 #include <openrct2/core/Path.hpp>
 #include <openrct2/core/String.hpp>
 #include <openrct2/OpenRCT2.h>
+#include <openrct2/ride/Ride.h>
 #include "TestData.h"
 
 #include <openrct2/platform/platform.h>
@@ -58,6 +59,7 @@ TEST_F(RideRatings, all)
     std::string path = TestData::GetParkPath("bpb.sv6");
 
     gOpenRCT2Headless = true;
+    gOpenRCT2NoGraphics = true;
 
     core_init();
     auto context = CreateContext();

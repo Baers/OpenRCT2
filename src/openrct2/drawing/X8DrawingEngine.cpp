@@ -15,12 +15,11 @@
 #pragma endregion
 
 #include <algorithm>
+#include <cstring>
 #include "../config/Config.h"
 #include "../Context.h"
 #include "../ui/UiContext.h"
-#include "../core/Guard.hpp"
 #include "../core/Math.hpp"
-#include "../core/Memory.hpp"
 #include "../interface/Screenshot.h"
 #include "IDrawingContext.h"
 #include "IDrawingEngine.h"

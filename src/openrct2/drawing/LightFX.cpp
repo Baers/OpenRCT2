@@ -18,14 +18,17 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include "../common.h"
 #include "../config/Config.h"
 #include "../Game.h"
 #include "../interface/Viewport.h"
 #include "../interface/Window.h"
-#include "../paint/tile_element/TileElement.h"
+#include "../ride/Ride.h"
 #include "../util/Util.h"
 #include "../world/Climate.h"
+#include "../world/Map.h"
+#include "../world/Sprite.h"
 #include "Drawing.h"
 #include "LightFX.h"
 

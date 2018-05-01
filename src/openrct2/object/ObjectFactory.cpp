@@ -16,9 +16,11 @@
 
 #include "../core/Console.hpp"
 #include "../core/FileStream.hpp"
+#include "../core/Json.hpp"
 #include "../core/Memory.hpp"
 #include "../core/MemoryStream.h"
 #include "../core/String.hpp"
+#include "../OpenRCT2.h"
 #include "../rct12/SawyerChunkReader.h"
 #include "BannerObject.h"
 #include "EntranceObject.h"
@@ -39,23 +41,32 @@
 class ReadObjectContext : public IReadObjectContext
 {
 private:
-    utf8 *  _objectName;
-    bool    _wasWarning = false;
-    bool    _wasError = false;
+    IObjectRepository& _objectRepository;
+
+    std::string _objectName;
+    bool        _loadImages;
+    bool        _wasWarning = false;
+    bool        _wasError = false;
 
 public:
     bool WasWarning() const { return _wasWarning; }
     bool WasError() const { return _wasError; }
 
-    explicit ReadObjectContext(const utf8 * objectFileName)
+    ReadObjectContext(IObjectRepository& objectRepository, const std::string &objectName, bool loadImages)
+        : _objectRepository(objectRepository),
+          _objectName(objectName),
+          _loadImages(loadImages)
     {
-        _objectName = String::Duplicate(objectFileName);
     }
 
-    ~ReadObjectContext() override
+    IObjectRepository& GetObjectRepository() override
     {
-        Memory::Free(_objectName);
-        _objectName = nullptr;
+        return _objectRepository;
+    }
+
+    bool ShouldLoadImages() override
+    {
+        return _loadImages;
     }
 
     void LogWarning(uint32 code, const utf8 * text) override
@@ -64,7 +75,7 @@ public:
 
         if (!String::IsNullOrEmpty(text))
         {
-            log_verbose("[%s] Warning: %s", _objectName, text);
+            Console::Error::WriteLine("[%s] Warning: %s", _objectName.c_str(), text);
         }
     }
 
@@ -74,7 +85,7 @@ public:
 
         if (!String::IsNullOrEmpty(text))
         {
-            Console::Error::WriteLine("[%s] Error: %s", _objectName, text);
+            Console::Error::WriteLine("[%s] Error: %s", _objectName.c_str(), text);
         }
     }
 };
@@ -98,9 +109,9 @@ namespace ObjectFactory
         }
     }
 
-    Object * CreateObjectFromLegacyFile(const utf8 * path)
+    Object * CreateObjectFromLegacyFile(IObjectRepository& objectRepository, const utf8 * path)
     {
-        log_verbose("CreateObjectFromLegacyFile(\"%s\")", path);
+        log_verbose("CreateObjectFromLegacyFile(..., \"%s\")", path);
 
         Object * result = nullptr;
         try
@@ -119,7 +130,7 @@ namespace ObjectFactory
             log_verbose("  size: %zu", chunk->GetLength());
 
             auto chunkStream = MemoryStream(chunk->GetData(), chunk->GetLength());
-            auto readContext = ReadObjectContext(objectName);
+            auto readContext = ReadObjectContext(objectRepository, objectName, !gOpenRCT2Headless);
             ReadObjectLegacy(result, &readContext, &chunkStream);
             if (readContext.WasError())
             {
@@ -128,15 +139,13 @@ namespace ObjectFactory
         }
         catch (const std::exception &)
         {
-            Console::Error::WriteLine("Unable to open or read '%s'", path);
-
             delete result;
             result = nullptr;
         }
         return result;
     }
 
-    Object * CreateObjectFromLegacyData(const rct_object_entry * entry, const void * data, size_t dataSize)
+    Object * CreateObjectFromLegacyData(IObjectRepository& objectRepository, const rct_object_entry * entry, const void * data, size_t dataSize)
     {
         Guard::ArgumentNotNull(entry, GUARD_LINE);
         Guard::ArgumentNotNull(data, GUARD_LINE);
@@ -147,7 +156,7 @@ namespace ObjectFactory
             utf8 objectName[DAT_NAME_LENGTH + 1];
             object_entry_get_name_fixed(objectName, sizeof(objectName), entry);
 
-            auto readContext = ReadObjectContext(objectName);
+            auto readContext = ReadObjectContext(objectRepository, objectName, !gOpenRCT2Headless);
             auto chunkStream = MemoryStream(data, dataSize);
             ReadObjectLegacy(result, &readContext, &chunkStream);
 
@@ -200,6 +209,70 @@ namespace ObjectFactory
             break;
         default:
             throw std::runtime_error("Invalid object type");
+        }
+        return result;
+    }
+
+    static uint8 ParseObjectType(const std::string &s)
+    {
+        if (s == "ride") return OBJECT_TYPE_RIDE;
+        if (s == "footpath") return OBJECT_TYPE_PATHS;
+        if (s == "footpath_banner") return OBJECT_TYPE_BANNERS;
+        if (s == "footpath_item") return OBJECT_TYPE_PATH_BITS;
+        if (s == "scenery_small") return OBJECT_TYPE_SMALL_SCENERY;
+        if (s == "scenery_large") return OBJECT_TYPE_LARGE_SCENERY;
+        if (s == "scenery_wall") return OBJECT_TYPE_WALLS;
+        if (s == "scenery_group") return OBJECT_TYPE_SCENERY_GROUP;
+        if (s == "park_entrance") return OBJECT_TYPE_PARK_ENTRANCE;
+        if (s == "water") return OBJECT_TYPE_WATER;
+        return 0xFF;
+    }
+
+    Object * CreateObjectFromJsonFile(IObjectRepository& objectRepository, const std::string &path)
+    {
+        log_verbose("CreateObjectFromJsonFile(\"%s\")", path.c_str());
+
+        Object * result = nullptr;
+        try
+        {
+            auto jRoot = Json::ReadFromFile(path.c_str());
+            auto jObjectType = json_object_get(jRoot, "objectType");
+            if (json_is_string(jObjectType))
+            {
+                auto objectType = ParseObjectType(json_string_value(jObjectType));
+                if (objectType != 0xFF)
+                {
+                    auto id = json_string_value(json_object_get(jRoot, "id"));
+
+                    rct_object_entry entry = { 0 };
+                    auto originalId = String::ToStd(json_string_value(json_object_get(jRoot, "originalId")));
+                    auto originalName = originalId;
+                    if (originalId.length() == 8 + 1 + 8 + 1 + 8)
+                    {
+                        entry.flags = std::stoul(originalId.substr(0, 8), 0, 16);
+                        originalName = originalId.substr(9, 8);
+                        entry.checksum = std::stoul(originalId.substr(18, 8), 0, 16);
+                    }
+                    auto minLength = std::min<size_t>(8, originalName.length());
+                    memcpy(entry.name, originalName.c_str(), minLength);
+
+                    result = CreateObject(entry);
+                    auto readContext = ReadObjectContext(objectRepository, id, !gOpenRCT2Headless);
+                    result->ReadJson(&readContext, jRoot);
+                    if (readContext.WasError())
+                    {
+                        throw std::runtime_error("Object has errors");
+                    }
+                }
+            }
+            json_decref(jRoot);
+        }
+        catch (const std::runtime_error &err)
+        {
+            Console::Error::WriteLine("Unable to open or read '%s': %s", path.c_str(), err.what());
+
+            delete result;
+            result = nullptr;
         }
         return result;
     }

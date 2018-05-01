@@ -27,7 +27,7 @@ misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 */
 
-#include <math.h>
+#include <cmath>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -911,8 +911,7 @@ static uint32 UTF8_getch(const char **src, size_t *srclen)
 {
     const uint8 *p = *(const uint8**)src;
     size_t left = 0;
-    bool overlong = false;
-    UNUSED(overlong);
+    [[maybe_unused]] bool overlong = false;
     bool underflow = false;
     uint32 ch = UNKNOWN_UNICODE;
 

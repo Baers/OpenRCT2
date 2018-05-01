@@ -26,8 +26,6 @@ struct track_design_file_ref
     utf8 * path;
 };
 
-#ifdef __cplusplus
-
 #include <string>
 
 namespace OpenRCT2
@@ -54,13 +52,9 @@ interface ITrackDesignRepository
 };
 
 ITrackDesignRepository * CreateTrackDesignRepository(OpenRCT2::IPlatformEnvironment * env);
-ITrackDesignRepository * GetTrackDesignRepository();
 std::string GetNameFromTrackPath(const std::string &path);
-
-#endif
 
 void    track_repository_scan();
 bool    track_repository_delete(const utf8 *path);
 bool    track_repository_rename(const utf8 *path, const utf8 *newName);
 bool    track_repository_install(const utf8 *srcPath);
-

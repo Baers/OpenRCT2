@@ -16,7 +16,7 @@ Includes all git commit authors. Aliases are GitHub user names.
 ## Long term contributors
 The following people are not part of the project team, but have been contributing for a long time.
 * Matte Andersson (Nubbie)
-* Kenton Boadway (PFCKrutonium)
+* Kenton Boadway (Krutonium)
 * Joe Minor Jr (wolfreak99)
 
 ## Implementation (RCT2)
@@ -71,6 +71,9 @@ The following people are not part of the project team, but have been contributin
 * Jens Heuseveldt (jensj12) - Mountain tool improvements, misc.
 * Park Joon-Kyu (segfault87) - Misc.
 * Harrison Gentry (hgentry) - Date-changing command, misc.
+* Joshua Moerman (Jaxan) - Misc.
+* Nicolas Hawrysh (xp4xbox) - Misc.
+* Albert Morgese (Fusxfaranto) - Misc.
 
 ## Bug fixes
 * (halfbro)
@@ -103,6 +106,9 @@ The following people are not part of the project team, but have been contributin
 * Tyler Ruckinger (TyPR124)
 * Justin Gottula (jgottula)
 * Seongsik Park (pss9205)
+* (Deurklink)
+* Nathan Zabriskie (NathanZabriskie)
+* Toby Hinloopen (tobyhinloopen)
 
 ## Toolchain
 * (Balletie) - macOS
@@ -133,7 +139,7 @@ The following people are not part of the project team, but have been contributin
 * Czech - Martin Černáč (octaroot), (Clonewayx), Tomáš Pazdiora (Aroidzap)
 * Dutch - Michael Steenbeek (Gymnasiast), Yannic Geurts (xzbobzx), (mrtnptrs), Thomas den Hollander (ThomasdenH), (hostbrute),  Marijn van der Werf (marijnvdwerf), Tom Kroes (ThePsionic); reviewing and discussion: Aaron van Geffen (AaronVanGeffen), (Balletie) and Sijmen Schoon (SijmenSchoon).
 * Finnish - (DJHasis), (Zode), (TheWing)
-* French - (fbourigault), Joël Troch (JoelTroch), Michael Steenbeek (Gymnasiast), Romain Vigier (rvgr),  (AziasYur), Hugo Courtial (s0r00t), David Delobel (incyclum)
+* French - (fbourigault), Joël Troch (JoelTroch), Michael Steenbeek (Gymnasiast), Romain Vigier (rvgr),  (AziasYur), Hugo Courtial (s0r00t), David Delobel (incyclum), Nicolas Hawrysh (xp4xbox)
 * German - (danidoedel), (atmaxinger), (Yepoleb), Daniel Kessel (dkessel), Leon (AllGoodNamesAreTaken), (raidcookie)
 * Italian - Luca Andrea Rossi (LucaRed)
 * Japanese - Aaron van Geffen (AaronVanGeffen), Nick Hall (nickhall), (jhako), Harry Lam (daihakken)
@@ -149,6 +155,7 @@ The following people are not part of the project team, but have been contributin
 
 ## Graphics
 * OpenRCT2 Logo - Yannic Geurts (xzbobzx)
+* Booster Sprites - Nicolas Hawrysh (xp4xbox)
 
 ## RollerCoaster Tycoon 2 credits
 Design and programming by Chris Sawyer

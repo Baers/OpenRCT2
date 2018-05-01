@@ -26,18 +26,19 @@
 #include "../Context.h"
 #include "../core/File.h"
 #include "../core/FileScanner.h"
+#include "../core/Guard.hpp"
 #include "../core/Json.hpp"
 #include "../core/Math.hpp"
-#include "../core/Memory.hpp"
 #include "../core/Path.hpp"
 #include "../core/String.hpp"
-#include "../core/Util.hpp"
+#include "../drawing/Drawing.h"
 #include "../localisation/Language.h"
 #include "../localisation/StringIds.h"
 #include "../PlatformEnvironment.h"
 #include "themes.h"
 #include "Window.h"
 #include "Window_internal.h"
+#include "Colour.h"
 
 using namespace OpenRCT2;
 

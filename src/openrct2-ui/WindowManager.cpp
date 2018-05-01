@@ -22,6 +22,7 @@
 #include "input/Input.h"
 #include "input/KeyboardShortcuts.h"
 #include "WindowManager.h"
+#include "windows/Window.h"
 
 using namespace OpenRCT2::Ui;
 
@@ -409,7 +410,10 @@ public:
             }
             break;
         }
-
+        case INTENT_ACTION_UPDATE_RESEARCH:
+            window_invalidate_by_class(WC_FINANCES);
+            window_invalidate_by_class(WC_RESEARCH);
+            break;
         }
     }
 

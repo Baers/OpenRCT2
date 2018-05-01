@@ -25,6 +25,7 @@
 #include "Editor.h"
 #include "FileClassifier.h"
 #include "Game.h"
+#include "HandleParkLoad.h"
 #include "Input.h"
 #include "interface/Screenshot.h"
 #include "interface/Viewport.h"
@@ -98,8 +99,7 @@ static GAME_COMMAND_CALLBACK_POINTER * const game_command_callback_table[] = {
     game_command_callback_place_ride_entrance_or_exit,
     game_command_callback_hire_new_staff_member,
     game_command_callback_pickup_guest,
-    game_command_callback_pickup_staff,
-    game_command_callback_marketing_start_campaign,
+    game_command_callback_pickup_staff
 };
 sint32 game_command_playerid = -1;
 
@@ -1043,7 +1043,14 @@ bool game_is_not_paused()
  *
  *  rct2: 0x00667C15
  */
-void game_pause_toggle(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, sint32 * esi, sint32 * edi, sint32 * ebp)
+void game_pause_toggle(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    [[maybe_unused]] sint32 * ecx,
+    [[maybe_unused]] sint32 * edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     if (*ebx & GAME_COMMAND_FLAG_APPLY)
         pause_toggle();
@@ -1055,7 +1062,14 @@ void game_pause_toggle(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, s
  *
  *  rct2: 0x0066DB5F
  */
-static void game_load_or_quit(sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, sint32 * esi, sint32 * edi, sint32 * ebp)
+static void game_load_or_quit(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    [[maybe_unused]] sint32 * ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    sint32 *                  edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     if (*ebx & GAME_COMMAND_FLAG_APPLY)
     {
@@ -1087,13 +1101,12 @@ static void load_landscape()
     context_open_intent(&intent);
 }
 
-static void utf8_to_rct2_self(char * buffer, size_t length)
+void utf8_to_rct2_self(char * buffer, size_t length)
 {
-    char tempBuffer[512];
-    utf8_to_rct2(tempBuffer, buffer);
+    auto temp = utf8_to_rct2(buffer);
 
     size_t       i   = 0;
-    const char * src = tempBuffer;
+    const char * src = temp.data();
     char       * dst = buffer;
     while (*src != 0 && i < length - 1)
     {
@@ -1125,13 +1138,12 @@ static void utf8_to_rct2_self(char * buffer, size_t length)
     while (i < length);
 }
 
-static void rct2_to_utf8_self(char * buffer, size_t length)
+void rct2_to_utf8_self(char * buffer, size_t length)
 {
     if (length > 0)
     {
-        char tempBuffer[512];
-        rct2_to_utf8(tempBuffer, buffer);
-        safe_strcpy(buffer, tempBuffer, length);
+        auto temp = rct2_to_utf8(buffer, RCT2_LANGUAGE_ID_ENGLISH_UK);
+        safe_strcpy(buffer, temp.data(), length);
     }
 }
 
@@ -1251,6 +1263,12 @@ void game_fix_save_vars()
         }
     }
 
+    if (peepsToRemove.size() > 0)
+    {
+        // Some broken saves have broken spatial indexes
+        reset_sprite_spatial_index();
+    }
+
     for (auto ptr : peepsToRemove)
     {
         peep_remove(ptr);
@@ -1291,14 +1309,14 @@ void game_fix_save_vars()
     // Fix banner list pointing to NULL map elements
     banner_reset_broken_index();
 
+    // Fix banners which share their index
+    fix_duplicated_banners();
+
     // Fix invalid vehicle sprite sizes, thus preventing visual corruption of sprites
     fix_invalid_vehicle_sprite_sizes();
 
     // Fix gParkEntrance locations for which the tile_element no longer exists
     fix_park_entrance_locations();
-
-    // Fix ride entrances and exits that were moved without updating ride->entrances[] / ride->exits[]
-    fix_ride_entrance_and_exit_locations();
 }
 
 void handle_park_load_failure_with_title_opt(const ParkLoadResult * result, const std::string & path, bool loadTitleFirst)
@@ -1715,22 +1733,22 @@ GAME_COMMAND_POINTER * new_game_command_table[GAME_COMMAND_COUNT] = {
     game_command_set_staff_patrol,
     game_command_fire_staff_member,
     game_command_set_staff_order,
-    game_command_set_park_name,
+    nullptr,
     game_command_set_park_open,
     game_command_buy_land_rights,
     game_command_place_park_entrance,
     game_command_remove_park_entrance,
     game_command_set_maze_track,
     game_command_set_park_entrance_fee,
-    game_command_update_staff_colour,
+    nullptr,
     game_command_place_wall,
     game_command_remove_wall,
     game_command_place_large_scenery,
     game_command_remove_large_scenery,
-    game_command_set_current_loan,
-    game_command_set_research_funding,
+    nullptr,
+    nullptr,
     game_command_place_track_design,
-    game_command_start_campaign,
+    nullptr,
     game_command_place_maze_design,
     game_command_place_banner,
     game_command_remove_banner,
@@ -1740,8 +1758,8 @@ GAME_COMMAND_POINTER * new_game_command_table[GAME_COMMAND_COUNT] = {
     game_command_set_banner_colour,
     game_command_set_land_ownership,
     game_command_clear_scenery,
-    game_command_set_banner_name,
-    game_command_set_sign_name,
+    nullptr,
+    nullptr,
     game_command_set_banner_style,
     game_command_set_sign_style,
     game_command_set_player_group,

@@ -18,6 +18,14 @@
 
 #include "common.h"
 
+#include <string>
+
+interface IObjectManager;
+interface IObjectRepository;
+interface IScenarioRepository;
+interface IStream;
+interface ITrackDesignRepository;
+
 class Intent;
 struct rct_window;
 using rct_windowclass = uint8;
@@ -59,12 +67,6 @@ enum
     CURSOR_PRESSED = CURSOR_DOWN | CURSOR_CHANGED,
 };
 
-#ifdef __cplusplus
-
-#include <string>
-
-interface IStream;
-
 namespace OpenRCT2
 {
     interface IPlatformEnvironment;
@@ -86,15 +88,20 @@ namespace OpenRCT2
     {
         virtual ~IContext() = default;
 
-        virtual Audio::IAudioContext *  GetAudioContext() abstract;
-        virtual Ui::IUiContext *        GetUiContext() abstract;
-        virtual IPlatformEnvironment *  GetPlatformEnvironment() abstract;
+        virtual Audio::IAudioContext *   GetAudioContext() abstract;
+        virtual Ui::IUiContext *         GetUiContext() abstract;
+        virtual IPlatformEnvironment *   GetPlatformEnvironment() abstract;
+        virtual IObjectManager *         GetObjectManager() abstract;
+        virtual IObjectRepository *      GetObjectRepository() abstract;
+        virtual ITrackDesignRepository * GetTrackDesignRepository() abstract;
+        virtual IScenarioRepository *    GetScenarioRepository() abstract;
 
         virtual sint32 RunOpenRCT2(int argc, const char * * argv) abstract;
 
         virtual bool Initialise() abstract;
         virtual bool LoadParkFromFile(const std::string &path, bool loadTitleScreenOnFail = false) abstract;
         virtual bool LoadParkFromStream(IStream * stream, const std::string &path, bool loadTitleScreenFirstOnFail = false) abstract;
+        virtual void WriteLine(const std::string &s) abstract;
         virtual void Finish() abstract;
         virtual void Quit() abstract;
 
@@ -109,11 +116,9 @@ namespace OpenRCT2
     IContext * GetContext();
 }
 
-#endif // __cplusplus
-
 enum
 {
-    // The game update inverval in milliseconds, (1000 / 40fps) = 25ms
+    // The game update interval in milliseconds, (1000 / 40fps) = 25ms
     GAME_UPDATE_TIME_MS = 25,
     // The number of logical update / ticks per second.
     GAME_UPDATE_FPS = 40,
@@ -220,4 +225,3 @@ void context_quit();
 const utf8 * context_get_path_legacy(sint32 pathId);
 bool context_load_park_from_file(const utf8 * path);
 bool context_load_park_from_stream(void * stream);
-

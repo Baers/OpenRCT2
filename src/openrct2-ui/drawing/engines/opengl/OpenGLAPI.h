@@ -18,7 +18,7 @@
 
 #include <openrct2/common.h>
 
-#if OPENGL_NO_LINK
+#ifdef OPENGL_NO_LINK
 
 // BEGIN [Do not define 1.1 function signatures]
 #define glActiveTexture     __static__glActiveTexture
@@ -48,9 +48,9 @@
 
 #endif
 
-#include <SDL_opengl.h>
+#include <SDL2/SDL_opengl.h>
 
-#if OPENGL_NO_LINK
+#ifdef OPENGL_NO_LINK
 
 // END [Do not define 1.1 function signatures]
 #undef glActiveTexture

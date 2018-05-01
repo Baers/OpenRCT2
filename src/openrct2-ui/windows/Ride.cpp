@@ -14,6 +14,7 @@
  *****************************************************************************/
 #pragma endregion
 
+#include <cmath>
 #include <limits>
 
 #include <openrct2-ui/windows/Window.h>
@@ -45,6 +46,9 @@
 #include <openrct2/sprites.h>
 #include <openrct2-ui/interface/Dropdown.h>
 #include <openrct2/windows/Intent.h>
+#include <openrct2/ride/Station.h>
+#include <openrct2/world/Park.h>
+#include <openrct2/ride/TrackDesign.h>
 
 enum {
     WINDOW_RIDE_PAGE_MAIN,
@@ -1482,13 +1486,13 @@ static void window_ride_update_overall_view(uint8 ride_index) {
     sint32 dy = maxy - miny;
     sint32 dz = maxz - minz;
 
-    sint32 size = (sint32) sqrt(dx*dx + dy*dy + dz*dz);
+    sint32 size = (sint32) std::sqrt(dx*dx + dy*dy + dz*dz);
 
     if (size >= 80)
     {
         // Each farther zoom level shows twice as many tiles (log)
         // Appropriate zoom is lowered by one to fill the entire view with the ride
-        view->zoom = Math::Clamp(0, (sint32) ceil(log(size / 80)) - 1, 3);
+        view->zoom = Math::Clamp(0, (sint32) std::ceil(std::log(size / 80)) - 1, 3);
     }
     else
     {
@@ -2535,12 +2539,12 @@ static rct_string_id window_ride_get_status_station(rct_window *w, void *argumen
 
     // Entrance / exit
     if (ride->status == RIDE_STATUS_CLOSED) {
-        if (ride->entrances[stationIndex].xy == RCT_XY8_UNDEFINED)
+        if (ride_get_entrance_location((uint8)w->number, (uint8)stationIndex).isNull())
             stringId = STR_NO_ENTRANCE;
-        else if (ride->exits[stationIndex].xy == RCT_XY8_UNDEFINED)
+        else if (ride_get_exit_location((uint8)w->number, (uint8)stationIndex).isNull())
             stringId = STR_NO_EXIT;
     } else {
-        if (ride->entrances[stationIndex].xy == RCT_XY8_UNDEFINED)
+        if (ride_get_entrance_location((uint8)w->number, (uint8)stationIndex).isNull())
             stringId = STR_EXIT_ONLY;
     }
 
@@ -2953,14 +2957,14 @@ static void window_ride_vehicle_paint(rct_window *w, rct_drawpixelinfo *dpi)
     }
 }
 
-struct rct_vehichle_paintinfo {
+struct rct_vehicle_paintinfo {
     sint16 x;
     sint16 y;
     sint32 sprite_index;
     sint32 tertiary_colour;
 };
 
-static rct_vehichle_paintinfo _sprites_to_draw[144];
+static rct_vehicle_paintinfo _sprites_to_draw[144];
 
 /**
  *
@@ -2983,7 +2987,7 @@ static void window_ride_vehicle_scrollpaint(rct_window *w, rct_drawpixelinfo *dp
 
     // For each train
     for (sint32 i = 0; i < ride->num_vehicles; i++) {
-        rct_vehichle_paintinfo *nextSpriteToDraw = _sprites_to_draw;
+        rct_vehicle_paintinfo *nextSpriteToDraw = _sprites_to_draw;
         sint32 x = startX;
         sint32 y = startY;
 
@@ -3029,12 +3033,12 @@ static void window_ride_vehicle_scrollpaint(rct_window *w, rct_drawpixelinfo *dp
         }
 
         if (ride->type == RIDE_TYPE_REVERSER_ROLLER_COASTER) {
-            rct_vehichle_paintinfo tmp = *(nextSpriteToDraw - 1);
+            rct_vehicle_paintinfo tmp = *(nextSpriteToDraw - 1);
             *(nextSpriteToDraw - 1) = *(nextSpriteToDraw - 2);
             *(nextSpriteToDraw - 2) = tmp;
         }
 
-        rct_vehichle_paintinfo *current = nextSpriteToDraw;
+        rct_vehicle_paintinfo *current = nextSpriteToDraw;
         while (--current >= _sprites_to_draw)
             gfx_draw_sprite(dpi, current->sprite_index, current->x, current->y, current->tertiary_colour);
 
@@ -3366,7 +3370,6 @@ static void window_ride_operating_invalidate(rct_window *w)
 {
     rct_widget *widgets;
     Ride *ride;
-    rct_ride_entry *rideEntry;
     rct_string_id format, caption, tooltip;
 
     widgets = window_ride_page_widgets[w->page];
@@ -3378,7 +3381,6 @@ static void window_ride_operating_invalidate(rct_window *w)
     window_ride_set_pressed_tab(w);
 
     ride = get_ride(w->number);
-    rideEntry = get_ride_entry_by_ride(ride);
 
     set_format_arg(0, rct_string_id, ride->name);
     set_format_arg(2, uint32, ride->name_arguments);
@@ -3393,8 +3395,8 @@ static void window_ride_operating_invalidate(rct_window *w)
         );
 
     // Lift hill speed
-    if ((rideEntry->enabledTrackPieces & (1ULL << TRACK_LIFT_HILL)) &&
-            track_piece_is_available_for_ride_type(ride->type, TRACK_LIFT_HILL)) {
+    if (track_piece_is_available_for_ride_type(ride->type, TRACK_LIFT_HILL))
+    {
         window_ride_operating_widgets[WIDX_LIFT_HILL_SPEED_LABEL].type = WWT_LABEL;
         window_ride_operating_widgets[WIDX_LIFT_HILL_SPEED].type = WWT_SPINNER;
         window_ride_operating_widgets[WIDX_LIFT_HILL_SPEED_INCREASE].type = WWT_BUTTON;
@@ -4278,7 +4280,7 @@ static void window_ride_colour_mousedown(rct_window *w, rct_widgetindex widgetIn
             numItems = ride->num_cars_per_train;
 
         stringId = (ride->colour_scheme_type & 3) == VEHICLE_COLOUR_SCHEME_PER_TRAIN ? STR_RIDE_COLOUR_TRAIN_OPTION : STR_RIDE_COLOUR_VEHICLE_OPTION;
-        for (i = 0; i < 32; i++) {
+        for (i = 0; i < std::min(numItems, (sint32)DROPDOWN_ITEMS_MAX_SIZE); i++) {
             gDropdownItemsFormat[i] = STR_DROPDOWN_MENU_LABEL;
             gDropdownItemsArgs[i] = ((sint64)(i + 1) << 32) | ((RideComponentNames[RideNameConvention[ride->type].vehicle].capitalised) << 16) | stringId;
         }

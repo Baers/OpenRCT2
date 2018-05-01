@@ -17,15 +17,30 @@
 #pragma once
 
 #include <cstdarg>
+#include <cstddef>
 #include <string>
 #include <vector>
 #include "../common.h"
+
+namespace CODE_PAGE
+{
+    // windows.h defines CP_UTF8
+#undef CP_UTF8
+
+    constexpr sint32 CP_932 = 932;      // ANSI/OEM Japanese; Japanese (Shift-JIS)
+    constexpr sint32 CP_936 = 936;      // ANSI/OEM Simplified Chinese (PRC, Singapore); Chinese Simplified (GB2312)
+    constexpr sint32 CP_949 = 949;      // ANSI/OEM Korean (Unified Hangul Code)
+    constexpr sint32 CP_950 = 950;      // ANSI/OEM Traditional Chinese (Taiwan; Hong Kong SAR, PRC); Chinese Traditional (Big5)
+    constexpr sint32 CP_1252 = 1252;    // ANSI Latin 1; Western European (Windows)
+    constexpr sint32 CP_UTF8 = 65001;   // Unicode (UTF-8)
+}
 
 namespace String
 {
     constexpr const utf8 * Empty = "";
 
     std::string     ToStd(const utf8 * str);
+    std::string     StdFormat_VA(const utf8 * format, va_list args);
     std::string     StdFormat(const utf8 * format, ...);
     std::string     ToUtf8(const std::wstring &s);
     std::wstring    ToUtf16(const std::string &s);
@@ -90,4 +105,9 @@ namespace String
     utf8 *          TrimStart(utf8 * buffer, size_t bufferSize, const utf8 * src);
     std::string     TrimStart(const std::string &s);
     std::string     Trim(const std::string &s);
+
+    /**
+     * Converts a multi-byte string from one code page to another.
+     */
+    std::string Convert(const std::string_view& src, sint32 srcCodePage, sint32 dstCodePage);
 }

@@ -35,7 +35,7 @@
 #define MAX_CATEGORIES_PER_RIDE         2
 #define DOWNTIME_HISTORY_SIZE           8
 #define CUSTOMER_HISTORY_SIZE           10
-#define MAX_CARS_PER_TRAIN              32
+#define MAX_CARS_PER_TRAIN              255
 #define MAX_STATIONS                    4
 #define RIDE_MEASUREMENT_MAX_ITEMS      4800
 #define MAX_RIDES                       255
@@ -126,6 +126,7 @@ struct rct_ride_entry {
     uint8 shop_item;                                    // 0x1C0
     uint8 shop_item_secondary;                          // 0x1C1
     rct_string_id capacity;
+    void * obj;
 };
 
 #pragma pack(pop)
@@ -163,8 +164,8 @@ struct Ride
     // ride->vehicle index for current train waiting for passengers
     // at station
     uint8 train_at_station[MAX_STATIONS];
-    LocationXY8 entrances[MAX_STATIONS];
-    LocationXY8 exits[MAX_STATIONS];
+    TileCoordsXYZD entrances[MAX_STATIONS];
+    TileCoordsXYZD exits[MAX_STATIONS];
     uint16 last_peep_in_queue[MAX_STATIONS];
     uint16 vehicles[MAX_VEHICLES_PER_RIDE];                         // Points to the first car in the train
     uint8 depart_flags;
@@ -431,7 +432,7 @@ enum {
     RIDE_ENTRY_FLAG_COVERED_RIDE                    = 1 << 10,
     RIDE_ENTRY_FLAG_LIMIT_AIRTIME_BONUS             = 1 << 11,
     RIDE_ENTRY_FLAG_SEPARATE_RIDE_NAME_DEPRECATED   = 1 << 12, // Always set with SEPARATE_RIDE, and deprecated in favour of it.
-    RIDE_ENTRY_FLAG_SEPARATE_RIDE                   = 1 << 13,
+    RIDE_ENTRY_FLAG_SEPARATE_RIDE_DEPRECATED        = 1 << 13, // Made redundant by ride groups
     RIDE_ENTRY_FLAG_CANNOT_BREAK_DOWN               = 1 << 14,
     RIDE_ENTRY_DISABLE_LAST_OPERATING_MODE          = 1 << 15,
     RIDE_ENTRY_FLAG_16                              = 1 << 16,
@@ -751,7 +752,8 @@ enum {
     RIDE_ELEMENT_WHIRLPOOL               = 1 << 7
 };
 
-enum ride_type_flags {
+enum ride_type_flags : uint32
+{
     RIDE_TYPE_FLAG_HAS_TRACK_COLOUR_MAIN = 1 << 0,
     RIDE_TYPE_FLAG_HAS_TRACK_COLOUR_ADDITIONAL = 1 << 1,
     RIDE_TYPE_FLAG_HAS_TRACK_COLOUR_SUPPORTS = 1 << 2,
@@ -856,7 +858,7 @@ enum {
     SHOP_ITEM_MEATBALL_SOUP,
     SHOP_ITEM_FRUIT_JUICE,
     SHOP_ITEM_SOYBEAN_MILK,
-    SHOP_ITEM_SU_JONGKWA,
+    SHOP_ITEM_SUJEONGGWA,
     SHOP_ITEM_SUB_SANDWICH,
     SHOP_ITEM_COOKIE,
     SHOP_ITEM_EMPTY_BOWL_RED,
@@ -1032,7 +1034,7 @@ sint32 ride_get_total_time(Ride *ride);
 sint32 ride_can_have_multiple_circuits(Ride *ride);
 track_colour ride_get_track_colour(Ride *ride, sint32 colourScheme);
 vehicle_colour ride_get_vehicle_colour(Ride *ride, sint32 vehicleIndex);
-sint32 ride_get_unused_preset_vehicle_colour(uint8 ride_type, uint8 ride_sub_type);
+sint32 ride_get_unused_preset_vehicle_colour(uint8 ride_sub_type);
 void ride_set_vehicle_colours_to_random_preset(Ride *ride, uint8 preset_index);
 rct_ride_entry *get_ride_entry_by_ride(Ride *ride);
 uint8 *get_ride_entry_indices_for_ride_type(uint8 rideType);
@@ -1052,7 +1054,7 @@ sint32 ride_music_params_update(sint16 x, sint16 y, sint16 z, uint8 rideIndex, u
 void ride_music_update_final();
 void ride_prepare_breakdown(sint32 rideIndex, sint32 breakdownReason);
 rct_tile_element *ride_get_station_start_track_element(Ride *ride, sint32 stationIndex);
-rct_tile_element *ride_get_station_exit_element(Ride *ride, sint32 x, sint32 y, sint32 z);
+rct_tile_element *ride_get_station_exit_element(sint32 x, sint32 y, sint32 z);
 void ride_set_status(sint32 rideIndex, sint32 status);
 void game_command_set_ride_status(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp);
 void ride_set_name(sint32 rideIndex, const char *name);
@@ -1194,6 +1196,6 @@ void ride_stop_peeps_queuing(sint32 rideIndex);
 
 LocationXY16 ride_get_rotated_coords(sint16 x, sint16 y, sint16 z);
 
-void fix_ride_entrance_and_exit_locations();
+void determine_ride_entrance_and_exit_locations();
 
 #endif

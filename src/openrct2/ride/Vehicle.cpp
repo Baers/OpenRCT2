@@ -32,6 +32,7 @@
 #include "../scenario/Scenario.h"
 #include "../util/Util.h"
 #include "../world/MapAnimation.h"
+#include "../world/Park.h"
 #include "../world/Scenery.h"
 #include "../world/SmallScenery.h"
 #include "../world/Sprite.h"
@@ -68,7 +69,7 @@ static void   vehicle_update_crash(rct_vehicle * vehicle);
 static void   vehicle_update_travelling_boat(rct_vehicle * vehicle);
 static void   vehicle_update_motion_boat_hire(rct_vehicle * vehicle);
 static void   vehicle_update_boat_location(rct_vehicle * vehicle);
-static bool   vehicle_is_boat_on_water(rct_vehicle * vehicle, int x, int y);
+static bool   vehicle_boat_is_location_accessible(const TileCoordsXYZ &location);
 static void   vehicle_update_arriving(rct_vehicle * vehicle);
 static void   vehicle_update_unloading_passengers(rct_vehicle * vehicle);
 static void   vehicle_update_waiting_for_cable_lift(rct_vehicle * vehicle);
@@ -1539,7 +1540,7 @@ static void vehicle_update_measurements(rct_vehicle * vehicle)
     }
 
     uint8 stationId = ride->current_test_station;
-    if (ride->entrances[stationId].xy != RCT_XY8_UNDEFINED)
+    if (!ride_get_entrance_location(ride, stationId).isNull())
     {
         uint8 test_segment = ride->current_test_segment;
 
@@ -1603,7 +1604,7 @@ static void vehicle_update_measurements(rct_vehicle * vehicle)
         ride->cur_test_track_z           = vehicle->track_z / 8;
         ride->cur_test_track_location.xy = map_location;
 
-        if (ride->entrances[ride->current_test_station].xy == RCT_XY8_UNDEFINED)
+        if (ride_get_entrance_location(ride, ride->current_test_station).isNull())
             return;
 
         uint16 track_elem_type = vehicle->track_type / 4;
@@ -1813,7 +1814,7 @@ static void vehicle_update_measurements(rct_vehicle * vehicle)
         }
     }
 
-    if (ride->entrances[ride->current_test_station].xy == RCT_XY8_UNDEFINED)
+    if (ride_get_entrance_location(ride, ride->current_test_station).isNull())
         return;
 
     sint16 x, y;
@@ -2235,7 +2236,7 @@ static void vehicle_update_waiting_for_passengers(rct_vehicle * vehicle)
         if (!vehicle_open_restraints(vehicle))
             return;
 
-        if (ride->entrances[vehicle->current_station].xy == RCT_XY8_UNDEFINED)
+        if (ride_get_entrance_location(ride, vehicle->current_station).isNull())
         {
             ride->train_at_station[vehicle->current_station] = 0xFF;
             vehicle->sub_state                               = 2;
@@ -2510,7 +2511,7 @@ static void vehicle_update_waiting_to_depart(rct_vehicle * vehicle)
             }
             else
             {
-                if (ride->exits[vehicle->current_station].xy != RCT_XY8_UNDEFINED)
+                if (!ride_get_exit_location(ride, vehicle->current_station).isNull())
                 {
                     vehicle->status    = VEHICLE_STATUS_UNLOADING_PASSENGERS;
                     vehicle->sub_state = 0;
@@ -2528,7 +2529,7 @@ static void vehicle_update_waiting_to_depart(rct_vehicle * vehicle)
 
                 if (curVehicle->num_peeps != 0)
                 {
-                    if (ride->exits[vehicle->current_station].xy != RCT_XY8_UNDEFINED)
+                    if (!ride_get_exit_location(ride, vehicle->current_station).isNull())
                     {
                         vehicle->status    = VEHICLE_STATUS_UNLOADING_PASSENGERS;
                         vehicle->sub_state = 0;
@@ -4099,7 +4100,7 @@ static void vehicle_update_unloading_passengers(rct_vehicle * vehicle)
             vehicle->peep[seat * 2] = SPRITE_INDEX_NULL;
 
             peep_decrement_num_riders(peep);
-            peep->sub_state = 7;
+            peep->sub_state = PEEP_RIDE_LEAVE_VEHICLE;
             peep->state     = PEEP_STATE_LEAVING_RIDE;
             peep_window_state_update(peep);
 
@@ -4107,14 +4108,14 @@ static void vehicle_update_unloading_passengers(rct_vehicle * vehicle)
             vehicle->peep[seat * 2 + 1] = SPRITE_INDEX_NULL;
 
             peep_decrement_num_riders(peep);
-            peep->sub_state = 7;
+            peep->sub_state = PEEP_RIDE_LEAVE_VEHICLE;
             peep->state     = PEEP_STATE_LEAVING_RIDE;
             peep_window_state_update(peep);
         }
     }
     else
     {
-        if (ride->exits[vehicle->current_station].xy == RCT_XY8_UNDEFINED)
+        if (ride_get_exit_location(ride, vehicle->current_station).isNull())
         {
             if (vehicle->sub_state != 1)
                 return;
@@ -4145,7 +4146,7 @@ static void vehicle_update_unloading_passengers(rct_vehicle * vehicle)
             {
                 rct_peep * peep = GET_PEEP(train->peep[peepIndex]);
                 peep_decrement_num_riders(peep);
-                peep->sub_state = 7;
+                peep->sub_state = PEEP_RIDE_LEAVE_VEHICLE;
                 peep->state     = PEEP_STATE_LEAVING_RIDE;
                 peep_window_state_update(peep);
             }
@@ -4468,7 +4469,7 @@ static void vehicle_update_motion_boat_hire(rct_vehicle * vehicle)
             sint32 flooredY = floor2(y, 32);
             if (flooredX != vehicle->track_x || flooredY != vehicle->track_y)
             {
-                if (vehicle_is_boat_on_water(vehicle, x, y))
+                if (!vehicle_boat_is_location_accessible(TileCoordsXYZ(CoordsXYZ{x, y, vehicle->track_z})))
                 {
                     // loc_6DA939:
                     Ride * ride = get_ride(vehicle->ride);
@@ -4657,7 +4658,7 @@ static void vehicle_update_boat_location(rct_vehicle * vehicle)
         sint16 x = vehicle->track_x + TileDirectionDelta[(randDirection + rotation) & 3].x;
         sint16 y = vehicle->track_y + TileDirectionDelta[(randDirection + rotation) & 3].y;
 
-        if (vehicle_is_boat_on_water(vehicle, x, y))
+        if (!vehicle_boat_is_location_accessible(TileCoordsXYZ(CoordsXYZ{x, y, vehicle->track_z})))
         {
             continue;
         }
@@ -4676,29 +4677,28 @@ static void vehicle_update_boat_location(rct_vehicle * vehicle)
  *
  *  rct2: 0x006DA22A
  */
-static bool vehicle_is_boat_on_water(rct_vehicle * vehicle, sint32 x, sint32 y)
+static bool vehicle_boat_is_location_accessible(const TileCoordsXYZ &location)
 {
-    sint32            z          = vehicle->track_z >> 3;
-    rct_tile_element * tileElement = map_get_first_element_at(x >> 5, y >> 5);
+    rct_tile_element * tileElement = map_get_first_element_at(location.x, location.y);
     do
     {
         if (tile_element_get_type(tileElement) == TILE_ELEMENT_TYPE_SURFACE)
         {
             sint32 waterZ = map_get_water_height(tileElement) * 2;
-            if (z != waterZ)
+            if (location.z != waterZ)
             {
-                return true;
+                return false;
             }
         }
         else
         {
-            if (z > tileElement->base_height - 2 && z < tileElement->clearance_height + 2)
+            if (location.z > tileElement->base_height - 2 && location.z < tileElement->clearance_height + 2)
             {
-                return true;
+                return false;
             }
         }
     } while (!tile_element_is_last_for_tile(tileElement++));
-    return false;
+    return true;
 }
 
 /**
@@ -8412,7 +8412,7 @@ loc_6DB967:
  *  rct2: 0x006DBAA6
  */
 static bool vehicle_update_track_motion_backwards_get_new_track(rct_vehicle * vehicle, uint16 trackType, Ride * ride,
-                                                                rct_ride_entry * rideEntry, uint16 * progress)
+                                                                uint16 * progress)
 {
     _vehicleVAngleEndF64E36 = TrackDefinitions[trackType].vangle_start;
     _vehicleBankEndF64E37   = TrackDefinitions[trackType].bank_start;
@@ -8617,7 +8617,7 @@ loc_6DBA33:;
     regs.ax = vehicle->track_progress - 1;
     if (regs.ax == -1)
     {
-        if (!vehicle_update_track_motion_backwards_get_new_track(vehicle, trackType, ride, rideEntry, (uint16 *)&regs.ax))
+        if (!vehicle_update_track_motion_backwards_get_new_track(vehicle, trackType, ride, (uint16 *)&regs.ax))
         {
             goto loc_6DBE5E;
         }

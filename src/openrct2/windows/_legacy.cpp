@@ -22,10 +22,16 @@
 #include "../Input.h"
 #include "../interface/Viewport.h"
 #include "../network/network.h"
+#include "../paint/VirtualFloor.h"
+#include "../peep/Staff.h"
 #include "../ride/Track.h"
 #include "../ride/TrackData.h"
+#include "../world/Banner.h"
 #include "../world/Scenery.h"
+#include "../world/Sprite.h"
 #include "Intent.h"
+
+#include <tuple>
 
 bool gDisableErrorWindowSound = false;
 
@@ -135,8 +141,10 @@ money32 place_provisional_track_piece(sint32 rideIndex, sint32 trackType, sint32
 
     ride_construction_remove_ghosts();
     ride = get_ride(rideIndex);
-    if (ride->type == RIDE_TYPE_MAZE) {
-        result = game_do_command(x, 105 | (4 << 8), y, rideIndex | (trackType << 8) | (liftHillAndAlternativeState << 16), GAME_COMMAND_SET_MAZE_TRACK, z, 0);
+    if (ride->type == RIDE_TYPE_MAZE)
+    {
+        sint32 flags = GAME_COMMAND_FLAG_APPLY | GAME_COMMAND_FLAG_ALLOW_DURING_PAUSED | GAME_COMMAND_FLAG_5 | GAME_COMMAND_FLAG_GHOST; // 105
+        result = maze_set_track(x, y, z, flags, true, 0, rideIndex, GC_SET_MAZE_TRACK_BUILD);
         if (result == MONEY32_UNDEFINED)
             return result;
 
@@ -149,17 +157,19 @@ money32 place_provisional_track_piece(sint32 rideIndex, sint32 trackType, sint32
         if (_currentTrackSlopeEnd != 0)
             viewport_set_visibility(2);
 
+        // Invalidate previous track piece (we may not be changing height!)
+        virtual_floor_invalidate();
+
         if (!scenery_tool_is_active())
         {
-            // Invalidate previous track piece (we may not be changing height!)
-            map_invalidate_virtual_floor_tiles();
-
             // Set new virtual floor height.
-            map_set_virtual_floor_height(z);
+            virtual_floor_set_height(z);
         }
 
         return result;
-    } else {
+    }
+    else
+    {
         result = game_do_command(x, 105 | (trackDirection << 8), y, rideIndex | (trackType << 8) | (liftHillAndAlternativeState << 16), GAME_COMMAND_PLACE_TRACK, z, 0);
         if (result == MONEY32_UNDEFINED)
             return result;
@@ -187,20 +197,20 @@ money32 place_provisional_track_piece(sint32 rideIndex, sint32 trackType, sint32
         if (_currentTrackSlopeEnd != 0)
             viewport_set_visibility(2);
 
+        // Invalidate previous track piece (we may not be changing height!)
+        virtual_floor_invalidate();
+
         if (!scenery_tool_is_active())
         {
-            // Invalidate previous track piece (we may not be changing height!)
-            map_invalidate_virtual_floor_tiles();
-
             // Set height to where the next track piece would begin
-            map_set_virtual_floor_height(z - z_begin + z_end);
+            virtual_floor_set_height(z - z_begin + z_end);
         }
 
         return result;
     }
 }
 
-static bool sub_6CA2DF_get_track_element(uint8 *trackElement) {
+static std::tuple<bool, uint8> window_ride_construction_update_state_get_track_element() {
     auto intent = Intent(INTENT_ACTION_RIDE_CONSTRUCTION_UPDATE_PIECES);
     context_broadcast_intent(&intent);
 
@@ -218,7 +228,7 @@ static bool sub_6CA2DF_get_track_element(uint8 *trackElement) {
 
     uint16 curve = _currentTrackCurve;
     if (curve == 0xFFFF) {
-        return false;
+        return std::make_tuple(false, 0);
     }
 
     bool startsDiagonal = (_currentTrackPieceDirection & (1 << 2)) != 0;
@@ -241,48 +251,46 @@ static bool sub_6CA2DF_get_track_element(uint8 *trackElement) {
             if (trackDescriptor->bank_start != startBank) continue;
             if (trackDescriptor->bank_end != endBank) continue;
 
-            *trackElement = trackDescriptor->track_element;
-            return true;
+            return std::make_tuple(true, trackDescriptor->track_element);
         }
 
-        return false;
+        return std::make_tuple(false, 0);
     }
 
-    *trackElement = curve & 0xFF;
-    switch (*trackElement) {
+    switch (curve & 0xFF) {
     case TRACK_ELEM_END_STATION:
     case TRACK_ELEM_S_BEND_LEFT:
     case TRACK_ELEM_S_BEND_RIGHT:
         if (startSlope != TRACK_SLOPE_NONE || endSlope != TRACK_SLOPE_NONE) {
-            return false;
+            return std::make_tuple(false, 0);
         }
 
         if (startBank != TRACK_BANK_NONE || endBank != TRACK_BANK_NONE) {
-            return false;
+            return std::make_tuple(false, 0);
         }
 
-        return true;
+        return std::make_tuple(true, curve & 0xFF);
 
     case TRACK_ELEM_LEFT_VERTICAL_LOOP:
     case TRACK_ELEM_RIGHT_VERTICAL_LOOP:
         if (startBank != TRACK_BANK_NONE || endBank != TRACK_BANK_NONE) {
-            return false;
+            return std::make_tuple(false, 0);
         }
 
         if (_rideConstructionState == RIDE_CONSTRUCTION_STATE_BACK) {
             if (endSlope != TRACK_SLOPE_DOWN_25) {
-                return false;
+                return std::make_tuple(false, 0);
             }
         } else {
             if (startSlope != TRACK_SLOPE_UP_25) {
-                return false;
+                return std::make_tuple(false, 0);
             }
         }
 
-        return true;
+        return std::make_tuple(true, curve & 0xFF);
 
     default:
-        return true;
+        return std::make_tuple(true, curve & 0xFF);
     }
 }
 
@@ -299,14 +307,16 @@ static bool sub_6CA2DF_get_track_element(uint8 *trackElement) {
  * @param[out] _properties (edirs16)
  * @return (CF)
  */
-bool sub_6CA2DF(sint32 *_trackType, sint32 *_trackDirection, sint32 *_rideIndex, sint32 *_liftHillAndAlternativeState, sint32 *_x, sint32 *_y, sint32 *_z, sint32 *_properties) {
+bool window_ride_construction_update_state(sint32 *_trackType, sint32 *_trackDirection, sint32 *_rideIndex, sint32 *_liftHillAndAlternativeState, sint32 *_x, sint32 *_y, sint32 *_z, sint32 *_properties) {
     uint8 trackType, trackDirection, rideIndex;
     uint16 z, x, y, liftHillAndAlternativeState, properties;
 
-    if (!sub_6CA2DF_get_track_element(&trackType)) {
+    auto updated_element = window_ride_construction_update_state_get_track_element();
+    if (!std::get<0>(updated_element)) {
         return true;
     }
 
+    trackType = std::get<1>(updated_element);
     liftHillAndAlternativeState = 0;
     rideIndex = _currentRideIndex;
     if (_currentTrackLiftHill & CONSTRUCTION_LIFT_HILL_SELECTED) {

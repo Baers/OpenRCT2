@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../common.h"
+#include "../Context.h"
 #include "../core/Console.hpp"
 #include "../core/FileIndex.hpp"
 #include "../core/FileStream.hpp"
@@ -80,39 +81,57 @@ class ObjectFileIndex final : public FileIndex<ObjectRepositoryItem>
 private:
     static constexpr uint32 MAGIC_NUMBER = 0x5844494F; // OIDX
     static constexpr uint16 VERSION = 17;
-    static constexpr auto PATTERN = "*.dat;*.pob";
+    static constexpr auto PATTERN = "*.dat;*.pob;*.json";
+
+    IObjectRepository& _objectRepository;
 
 public:
-    explicit ObjectFileIndex(IPlatformEnvironment * env) :
+    explicit ObjectFileIndex(IObjectRepository& objectRepository, IPlatformEnvironment * env) :
         FileIndex("object index",
             MAGIC_NUMBER,
             VERSION,
             env->GetFilePath(PATHID::CACHE_OBJECTS),
             std::string(PATTERN),
             std::vector<std::string>({
-                env->GetDirectoryPath(DIRBASE::RCT2, DIRID::OBJECT),
-                env->GetDirectoryPath(DIRBASE::USER, DIRID::OBJECT) }))
+                env->GetDirectoryPath(DIRBASE::OPENRCT2, DIRID::OBJECT),
+                env->GetDirectoryPath(DIRBASE::USER, DIRID::OBJECT) })),
+        _objectRepository(objectRepository)
     {
     }
 
 public:
     std::tuple<bool, ObjectRepositoryItem> Create(const std::string &path) const override
     {
-        auto object = ObjectFactory::CreateObjectFromLegacyFile(path.c_str());
-        if (object != nullptr)
+        auto extension = Path::GetExtension(path);
+        if (String::Equals(extension, ".json", true))
         {
-            ObjectRepositoryItem item = { 0 };
-            item.ObjectEntry = *object->GetObjectEntry();
-            item.Path = String::Duplicate(path);
-            item.Name = String::Duplicate(object->GetName());
-            object->SetRepositoryItem(&item);
-            delete object;
-            return std::make_tuple(true, item);
+            auto object = ObjectFactory::CreateObjectFromJsonFile(_objectRepository, path);
+            if (object != nullptr)
+            {
+                ObjectRepositoryItem item = { 0 };
+                item.ObjectEntry = *object->GetObjectEntry();
+                item.Path = String::Duplicate(path);
+                item.Name = String::Duplicate(object->GetName());
+                object->SetRepositoryItem(&item);
+                delete object;
+                return std::make_tuple(true, item);
+            }
         }
         else
         {
-            return std::make_tuple(false, ObjectRepositoryItem());
+            auto object = ObjectFactory::CreateObjectFromLegacyFile(_objectRepository, path.c_str());
+            if (object != nullptr)
+            {
+                ObjectRepositoryItem item = { 0 };
+                item.ObjectEntry = *object->GetObjectEntry();
+                item.Path = String::Duplicate(path);
+                item.Name = String::Duplicate(object->GetName());
+                object->SetRepositoryItem(&item);
+                delete object;
+                return std::make_tuple(true, item);
+            }
         }
+        return std::make_tuple(false, ObjectRepositoryItem());
     }
 
 protected:
@@ -197,7 +216,7 @@ class ObjectRepository final : public IObjectRepository
 public:
     explicit ObjectRepository(IPlatformEnvironment * env)
         : _env(env),
-          _fileIndex(env)
+          _fileIndex(*this, env)
     {
     }
 
@@ -260,8 +279,15 @@ public:
     {
         Guard::ArgumentNotNull(ori, GUARD_LINE);
 
-        Object * object = ObjectFactory::CreateObjectFromLegacyFile(ori->Path);
-        return object;
+        auto extension = Path::GetExtension(ori->Path);
+        if (String::Equals(extension, ".json", true))
+        {
+            return ObjectFactory::CreateObjectFromJsonFile(*this, ori->Path);
+        }
+        else
+        {
+            return ObjectFactory::CreateObjectFromLegacyFile(*this, ori->Path);
+        }
     }
 
     void RegisterLoadedObject(const ObjectRepositoryItem * ori, Object * object) override
@@ -287,7 +313,7 @@ public:
         object_entry_get_name_fixed(objectName, sizeof(objectName), objectEntry);
 
         // Check that the object is loadable before writing it
-        Object * object = ObjectFactory::CreateObjectFromLegacyData(objectEntry, data, dataSize);
+        Object * object = ObjectFactory::CreateObjectFromLegacyData(*this, objectEntry, data, dataSize);
         if (object == nullptr)
         {
             Console::Error::WriteLine("[%s] Unable to export object.", objectName);
@@ -611,17 +637,9 @@ private:
     }
 };
 
-static ObjectRepository * _objectRepository = nullptr;
-
 IObjectRepository * CreateObjectRepository(IPlatformEnvironment * env)
 {
-    _objectRepository = new ObjectRepository(env);
-    return _objectRepository;
-}
-
-IObjectRepository * GetObjectRepository()
-{
-    return _objectRepository;
+    return new ObjectRepository(env);
 }
 
 bool IsObjectCustom(const ObjectRepositoryItem * object)
@@ -635,20 +653,8 @@ bool IsObjectCustom(const ObjectRepositoryItem * object)
 const rct_object_entry * object_list_find(rct_object_entry * entry)
 {
     const rct_object_entry * result = nullptr;
-    auto objRepo = GetObjectRepository();
+    auto objRepo = GetContext()->GetObjectRepository();
     auto item = objRepo->FindObject(entry);
-    if (item != nullptr)
-    {
-        result = &item->ObjectEntry;
-    }
-    return result;
-}
-
-const rct_object_entry * object_list_find_by_name(const char * name)
-{
-    const rct_object_entry * result = nullptr;
-    auto objRepo = GetObjectRepository();
-    auto item = objRepo->FindObject(name);
     if (item != nullptr)
     {
         result = &item->ObjectEntry;
@@ -658,17 +664,18 @@ const rct_object_entry * object_list_find_by_name(const char * name)
 
 void object_list_load()
 {
-    IObjectRepository * objectRepository = GetObjectRepository();
+    auto context = GetContext();
+    IObjectRepository * objectRepository = context->GetObjectRepository();
     objectRepository->LoadOrConstruct();
 
-    IObjectManager * objectManager = GetObjectManager();
+    IObjectManager * objectManager = context->GetObjectManager();
     objectManager->UnloadAll();
 }
 
 void * object_repository_load_object(const rct_object_entry * objectEntry)
 {
     Object * object = nullptr;
-    IObjectRepository * objRepository = GetObjectRepository();
+    IObjectRepository * objRepository = GetContext()->GetObjectRepository();
     const ObjectRepositoryItem * ori = objRepository->FindObject(objectEntry);
     if (ori != nullptr)
     {
@@ -700,7 +707,7 @@ void scenario_translate(scenario_index_entry * scenarioEntry, const rct_object_e
         // Checks for a scenario string object (possibly for localisation)
         if ((stexObjectEntry->flags & 0xFF) != 255)
         {
-            IObjectRepository * objectRepository = GetObjectRepository();
+            IObjectRepository * objectRepository = GetContext()->GetObjectRepository();
             const ObjectRepositoryItem * ori = objectRepository->FindObject(stexObjectEntry);
             if (ori != nullptr)
             {
@@ -723,25 +730,25 @@ void scenario_translate(scenario_index_entry * scenarioEntry, const rct_object_e
 
 size_t object_repository_get_items_count()
 {
-    IObjectRepository * objectRepository = GetObjectRepository();
+    IObjectRepository * objectRepository = GetContext()->GetObjectRepository();
     return objectRepository->GetNumObjects();
 }
 
 const ObjectRepositoryItem * object_repository_get_items()
 {
-    IObjectRepository * objectRepository = GetObjectRepository();
+    IObjectRepository * objectRepository = GetContext()->GetObjectRepository();
     return objectRepository->GetObjects();
 }
 
 const ObjectRepositoryItem * object_repository_find_object_by_entry(const rct_object_entry * entry)
 {
-    IObjectRepository * objectRepository = GetObjectRepository();
+    IObjectRepository * objectRepository = GetContext()->GetObjectRepository();
     return objectRepository->FindObject(entry);
 }
 
 const ObjectRepositoryItem * object_repository_find_object_by_name(const char * name)
 {
-    IObjectRepository * objectRepository = GetObjectRepository();
+    IObjectRepository * objectRepository = GetContext()->GetObjectRepository();
     return objectRepository->FindObject(name);
 }
 
@@ -826,4 +833,3 @@ sint32 object_calculate_checksum(const rct_object_entry * entry, const void * da
 
     return (sint32)checksum;
 }
-

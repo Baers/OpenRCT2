@@ -28,6 +28,7 @@
 #include <openrct2/sprites.h>
 #include <openrct2/world/Footpath.h>
 #include <openrct2-ui/interface/Dropdown.h>
+#include <openrct2/world/Park.h>
 
 enum
 {
@@ -1092,7 +1093,7 @@ static void footpath_remove_tile_element(rct_tile_element * tileElement)
         gFootpathConstructFromPosition.x,
         gFootpathConstructFromPosition.y,
         tileElement->base_height,
-        1
+        GAME_COMMAND_FLAG_APPLY
     );
 
     // Move selection

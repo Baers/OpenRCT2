@@ -15,25 +15,21 @@
 #pragma endregion
 
 #include <algorithm>
+#include <cstring>
+
 #include "../config/Config.h"
 #include "../Context.h"
 #include "../core/Math.hpp"
 #include "../drawing/Drawing.h"
 #include "../Game.h"
 #include "../Input.h"
-#include "../localisation/Localisation.h"
 #include "../OpenRCT2.h"
 #include "../paint/Paint.h"
-#include "../paint/Supports.h"
 #include "../peep/Staff.h"
-#include "../ride/RideData.h"
-#include "../ride/TrackData.h"
-#include "../world/Banner.h"
+#include "../ride/Ride.h"
+#include "../ride/TrackDesign.h"
 #include "../world/Climate.h"
-#include "../world/Entrance.h"
-#include "../world/Footpath.h"
 #include "../world/Map.h"
-#include "../world/Scenery.h"
 #include "../world/Sprite.h"
 #include "Colour.h"
 #include "Viewport.h"
@@ -653,8 +649,7 @@ void viewport_update_smart_sprite_follow(rct_window * window)
     }
     else if (sprite->unknown.sprite_identifier == SPRITE_IDENTIFIER_VEHICLE)
     {
-        rct_vehicle * vehicle = GET_VEHICLE(window->viewport_smart_follow_sprite);
-        viewport_update_smart_vehicle_follow(window, vehicle);
+        viewport_update_smart_vehicle_follow(window);
     }
     else if (sprite->unknown.sprite_identifier == SPRITE_IDENTIFIER_MISC ||
              sprite->unknown.sprite_identifier == SPRITE_IDENTIFIER_LITTER)
@@ -755,7 +750,7 @@ void viewport_update_smart_staff_follow(rct_window * window, rct_peep * peep)
     window->viewport_target_sprite = window->viewport_focus_sprite.sprite_id;
 }
 
-void viewport_update_smart_vehicle_follow(rct_window * window, rct_vehicle * vehicle)
+void viewport_update_smart_vehicle_follow(rct_window * window)
 {
     // Can be expanded in the future if needed
     sprite_focus focus = { 0 };
@@ -1442,7 +1437,7 @@ static bool sub_679074(rct_drawpixelinfo *dpi, sint32 imageId, sint16 x, sint16 
 static bool sub_679023(rct_drawpixelinfo *dpi, sint32 imageId, sint32 x, sint32 y)
 {
     const uint8 * palette = nullptr;
-    imageId &= 0xBFFFFFFF;
+    imageId &= ~IMAGE_TYPE_TRANSPARENT;
     if (imageId & IMAGE_TYPE_REMAP) {
         _currentImageType = IMAGE_TYPE_REMAP;
         sint32 index = (imageId >> 19) & 0x7F;

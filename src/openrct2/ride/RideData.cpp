@@ -1370,7 +1370,7 @@ const rct_ride_data_5 RideData5[RIDE_TYPE_COUNT] = {
     {   12,     128,    3,      255,    2,      1,      39,     0   },  // RIDE_TYPE_CIRCUS
     {   8,      24,     6,      2,      7,      30,     50,     0   },  // RIDE_TYPE_GHOST_TRAIN
     {   54,     24,     8,      31,     9,      55,     120,    0   },  // RIDE_TYPE_TWISTER_ROLLER_COASTER
-    {   41,     24,     8,      15,     11,     50,     105,    0   },  // RIDE_TYPE_WOODEN_ROLLER_COASTER
+    {   41,     24,     8,      19,     11,     50,     105,    0   },  // RIDE_TYPE_WOODEN_ROLLER_COASTER
     {   15,     24,     4,      15,     11,     37,     65,     0   },  // RIDE_TYPE_SIDE_FRICTION_ROLLER_COASTER
     {   16,     24,     4,      4,      7,      40,     55,     0   },  // RIDE_TYPE_STEEL_WILD_MOUSE
     {   40,     24,     8,      78,     11,     50,     100,    0   },  // RIDE_TYPE_MULTI_DIMENSION_ROLLER_COASTER
@@ -1460,7 +1460,7 @@ const money8 DefaultShopItemPrice[SHOP_ITEM_COUNT] = {
     MONEY(1,50),                        // SHOP_ITEM_MEATBALL_SOUP
     MONEY(1,20),                        // SHOP_ITEM_FRUIT_JUICE
     MONEY(1,20),                        // SHOP_ITEM_SOYBEAN_MILK
-    MONEY(1,20),                        // SHOP_ITEM_SU_JONGKWA
+    MONEY(1,20),                        // SHOP_ITEM_SUJEONGGWA
     MONEY(1,50),                        // SHOP_ITEM_SUB_SANDWICH
     MONEY(0,70),                        // SHOP_ITEM_COOKIE
     MONEY(0,00),                        // SHOP_ITEM_EMPTY_BOWL_RED
@@ -1576,7 +1576,7 @@ const uint32 ShopItemImage[SHOP_ITEM_COUNT] = {
     SPR_SHOP_ITEM_MEATBALL_SOUP,
     SPR_SHOP_ITEM_FRUIT_JUICE,
     SPR_SHOP_ITEM_SOYBEAN_MILK,
-    SPR_SHOP_ITEM_SU_JONGKWA,
+    SPR_SHOP_ITEM_SUJEONGGWA,
     SPR_SHOP_ITEM_SUB_SANDWICH,
     SPR_SHOP_ITEM_COOKIE,
     SPR_SHOP_ITEM_EMPTY_BOWL_RED,
@@ -1629,7 +1629,7 @@ const rct_ride_entry_vehicle CableLiftVehicle = {
     /* .effect_visual = */ 1,
     /* .draw_order = */ 14,
     /* .num_vertical_frames_override = */ 0,
-    /* .peep_loading_positions = */ nullptr
+    /* .peep_loading_positions = */ 0
 };
 
 /* rct2: 0x009A0AA0 */
@@ -2482,7 +2482,7 @@ const rct_shop_item_stats ShopItemStats[SHOP_ITEM_COUNT] = {
     {  5, 14, 14, 16 }, // SHOP_ITEM_MEATBALL_SOUP
     {  4, 11, 19, 11 }, // SHOP_ITEM_FRUIT_JUICE
     {  4, 10, 14, 10 }, // SHOP_ITEM_SOYBEAN_MILK
-    {  3, 11, 14, 11 }, // SHOP_ITEM_SU_JONGKWA
+    {  3, 11, 14, 11 }, // SHOP_ITEM_SUJEONGGWA
     {  5, 19, 19, 17 }, // SHOP_ITEM_SUB_SANDWICH
     {  4,  8,  8,  8 }, // SHOP_ITEM_COOKIE
     {  0,  0,  0,  0 }, // SHOP_ITEM_EMPTY_BOWL_RED

@@ -34,6 +34,7 @@
 #include <openrct2/network/twitch.h>
 #include <openrct2/OpenRCT2.h>
 #include <openrct2/ParkImporter.h>
+#include <openrct2/paint/VirtualFloor.h>
 #include <openrct2/peep/Staff.h>
 #include <openrct2/util/Util.h>
 #include <openrct2-ui/interface/Dropdown.h>
@@ -44,6 +45,12 @@
 #include <openrct2/world/SmallScenery.h>
 #include <openrct2/world/Wall.h>
 #include <openrct2-ui/interface/LandTool.h>
+#include <openrct2/scenario/Scenario.h>
+#include <openrct2/world/Park.h>
+#include "../interface/InGameConsole.h"
+#include "../UiContext.h"
+
+using namespace OpenRCT2::Ui;
 
 enum {
     WIDX_PAUSE,
@@ -290,7 +297,10 @@ static money32 selection_raise_land(uint8 flags);
 static bool     _menuDropdownIncludesTwitch;
 static uint8    _unkF64F0E;
 static sint16   _unkF64F0A;
-static uint16   _unkF64F15;
+// rct2: 0x00F64F15
+static colour_t _secondaryColour;
+// rct2: 0x00F64F16
+static colour_t _tertiaryColour;
 
 /**
  * Creates the main game top toolbar window.
@@ -1288,7 +1298,7 @@ static void sub_6E1F34(sint16 x, sint16 y, uint16 selected_scenery, sint16* grid
 
             if (gConfigGeneral.use_virtual_floor)
             {
-                map_set_virtual_floor_height(gSceneryPlaceZ);
+                virtual_floor_set_height(gSceneryPlaceZ);
             }
 
             return;
@@ -1439,7 +1449,8 @@ static void sub_6E1F34(sint16 x, sint16 y, uint16 selected_scenery, sint16* grid
         if (*grid_x == LOCATION_NULL)
             return;
 
-        _unkF64F15 = gWindowScenerySecondaryColour | (gWindowSceneryTertiaryColour << 8);
+        _secondaryColour = gWindowScenerySecondaryColour;
+        _tertiaryColour = gWindowSceneryTertiaryColour;
         // Also places it in lower but think thats for clobbering
         *parameter_1 = (selected_scenery & 0xFF) << 8;
         *parameter_2 = cl | (gWindowSceneryPrimaryColour << 8);
@@ -1544,7 +1555,7 @@ static void sub_6E1F34(sint16 x, sint16 y, uint16 selected_scenery, sint16* grid
 
     if (gConfigGeneral.use_virtual_floor)
     {
-        map_set_virtual_floor_height(gSceneryPlaceZ);
+        virtual_floor_set_height(gSceneryPlaceZ);
     }
 }
 
@@ -1693,7 +1704,7 @@ static void window_top_toolbar_scenery_tool_down(sint16 x, sint16 y, rct_window 
 
             gDisableErrorWindowSound = true;
             gGameCommandErrorTitle = STR_CANT_BUILD_PARK_ENTRANCE_HERE;
-            sint32 cost = game_do_command(gridX, flags, gridY, parameter_2, GAME_COMMAND_PLACE_WALL, gSceneryPlaceZ, _unkF64F15);
+            sint32 cost = game_do_command(gridX, flags, gridY, parameter_2, GAME_COMMAND_PLACE_WALL, gSceneryPlaceZ, _secondaryColour | (_tertiaryColour << 8));
             gDisableErrorWindowSound = false;
 
             if (cost != MONEY32_UNDEFINED){
@@ -2295,7 +2306,7 @@ static money32 try_place_ghost_scenery(LocationXY16 map_tile, uint32 parameter_1
             parameter_2,
             GAME_COMMAND_PLACE_WALL,
             gSceneryPlaceZ,
-            _unkF64F15);
+            _secondaryColour | (_tertiaryColour << 8));
 
         if (cost == MONEY32_UNDEFINED)
             return cost;
@@ -2378,7 +2389,7 @@ static void top_toolbar_tool_update_scenery(sint16 x, sint16 y){
 
     if (gConfigGeneral.use_virtual_floor)
     {
-        map_invalidate_virtual_floor_tiles();
+        virtual_floor_invalidate();
     }
 
     gMapSelectFlags &= ~MAP_SELECT_FLAG_ENABLE;
@@ -3117,8 +3128,11 @@ static void top_toolbar_debug_menu_dropdown(sint16 dropdownIndex)
     if (w) {
         switch (dropdownIndex) {
         case DDIDX_CONSOLE:
-            console_open();
+        {
+            auto& console = GetInGameConsole();
+            console.Open();
             break;
+        }
         case DDIDX_TILE_INSPECTOR:
             context_open_window(WC_TILE_INSPECTOR);
             break;

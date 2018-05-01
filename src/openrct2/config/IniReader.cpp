@@ -17,11 +17,10 @@
 #include <cctype>
 #include <initializer_list>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 #include <vector>
 #include "../common.h"
-#include "../core/FileStream.hpp"
+#include "../core/IStream.hpp"
 #include "../core/String.hpp"
 #include "../core/StringBuilder.hpp"
 #include "IniReader.hpp"

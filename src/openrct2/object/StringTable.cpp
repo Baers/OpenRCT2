@@ -44,7 +44,7 @@ static bool StringIsBlank(const utf8 * str)
 {
     for (auto ch = str; *ch != '\0'; ch++)
     {
-        if (!isblank(*ch))
+        if (!isblank((uint8)*ch))
         {
             return false;
         }
@@ -68,13 +68,13 @@ void StringTable::Read(IReadObjectContext * context, IStream * stream, uint8 id)
             entry.LanguageId = languageId;
 
             std::string stringAsWin1252 = stream->ReadStdString();
-            utf8 * stringAsUtf8 = rct2_language_string_to_utf8(stringAsWin1252.c_str(), stringAsWin1252.size(), rct2LanguageId);
+            auto stringAsUtf8 = rct2_to_utf8(stringAsWin1252, rct2LanguageId);
 
-            if (StringIsBlank(stringAsUtf8))
+            if (StringIsBlank(stringAsUtf8.data()))
             {
                 entry.LanguageId = LANGUAGE_UNDEFINED;
             }
-            String::Trim(stringAsUtf8);
+            stringAsUtf8 = String::Trim(stringAsUtf8);
 
             entry.Text = stringAsUtf8;
             _strings.push_back(entry);
@@ -97,7 +97,7 @@ std::string StringTable::GetString(uint8 id) const
             return string.Text;
         }
     }
-    return nullptr;
+    return std::string();
 }
 
 void StringTable::SetString(uint8 id, uint8 language, const std::string &text)

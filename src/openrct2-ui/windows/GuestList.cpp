@@ -14,6 +14,8 @@
  *****************************************************************************/
 #pragma endregion
 
+#include <cmath>
+
 #include <openrct2/config/Config.h>
 #include <openrct2-ui/windows/Window.h>
 
@@ -24,6 +26,9 @@
 #include <openrct2-ui/interface/Dropdown.h>
 #include <openrct2/Context.h>
 #include <openrct2/util/Util.h>
+#include <openrct2/drawing/Drawing.h>
+#include <openrct2/world/Sprite.h>
+#include <openrct2/scenario/Scenario.h>
 
 enum {
     PAGE_INDIVIDUAL,
@@ -508,7 +513,7 @@ static void window_guest_list_scrollgetsize(rct_window *w, sint32 scrollIndex, s
         }
         w->var_492 = numGuests;
         y = numGuests * SCROLLABLE_ROW_HEIGHT;
-        _window_guest_list_num_pages = (sint32) ceilf((float)numGuests / 3173);
+        _window_guest_list_num_pages = (sint32) std::ceil((float)numGuests / 3173);
         if (_window_guest_list_num_pages == 0)
             _window_guest_list_selected_page = 0;
         else if (_window_guest_list_selected_page >= _window_guest_list_num_pages)
@@ -795,9 +800,9 @@ static void window_guest_list_scrollpaint(rct_window *w, rct_drawpixelinfo *dpi,
                         thought = &peep->thoughts[j];
                         if (thought->type == PEEP_THOUGHT_TYPE_NONE)
                             break;
-                        if (thought->var_2 == 0)
+                        if (thought->freshness == 0)
                             continue;
-                        if (thought->var_2 > 5)
+                        if (thought->freshness > 5)
                             break;
 
                         peep_thought_set_format_args(&peep->thoughts[j]);
@@ -856,7 +861,7 @@ static void window_guest_list_textinput(rct_window *w, rct_widgetindex widgetInd
 {
     if (text != nullptr && text[0] != '\0')
     {
-        strncpy(_window_guest_list_filter_name, text, sizeof(_window_guest_list_filter_name));
+        safe_strcpy(_window_guest_list_filter_name, text, sizeof(_window_guest_list_filter_name));
         w->pressed_widgets |= (1 << WIDX_FILTER_BY_NAME);
     }
 }
@@ -903,7 +908,7 @@ static void get_arguments_from_peep(rct_peep *peep, uint32 *argument_1, uint32* 
     case VIEW_THOUGHTS:
     {
         rct_peep_thought *thought = &peep->thoughts[0];
-        if (thought->var_2 <= 5 && thought->type != PEEP_THOUGHT_TYPE_NONE) {
+        if (thought->freshness <= 5 && thought->type != PEEP_THOUGHT_TYPE_NONE) {
             // HACK The out arguments here are used to draw the group text so we just return
             //      gCommonFormatArgs as two uint32s.
             memset(gCommonFormatArgs, 0, sizeof(*argument_1) + sizeof(*argument_2));

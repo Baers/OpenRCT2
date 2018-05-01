@@ -23,17 +23,11 @@
 #undef M_PI
 
 #ifdef _MSC_VER
-#include <time.h>
+#include <ctime>
 #endif
 
-#include <assert.h>
-#include <math.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
+#include <cassert>
+#include <cstdint>
 
 using sint8 = int8_t;
 using sint16 = int16_t;
@@ -72,50 +66,11 @@ using colour_t = uint8;
 #define rol64(x, shift)     (((uint64)(x) << (shift)) | ((uint32)(x) >> (64 - (shift))))
 #define ror64(x, shift)     (((uint64)(x) >> (shift)) | ((uint32)(x) << (64 - (shift))))
 
-#ifndef __cplusplus
-// in C++ you should be using Math::Min and Math::Max
-#ifndef min
-#define min(a,b)            (((a) < (b)) ? (a) : (b))
-#endif
-#ifndef max
-#define max(a,b)            (((a) > (b)) ? (a) : (b))
-#endif
-
-#define sgn(x)              ((x > 0) ? 1 : ((x < 0) ? -1 : 0))
-#define clamp(l, x, h)      (min(h, max(l, x)))
-
-#endif // __cplusplus
-
 // Rounds an integer down to the given power of 2. y must be a power of 2.
 #define floor2(x, y)        ((x) & (~((y) - 1)))
 
 // Rounds an integer up to the given power of 2. y must be a power of 2.
 #define ceil2(x, y)         (((x) + (y) - 1) & (~((y) - 1)))
-
-
-#ifndef __cplusplus
-// in C++ you should be using Util::CountOf
-#ifdef __GNUC__
-/**
- * Force a compilation error if condition is true, but also produce a
- * result (of value 0 and type size_t), so the expression can be used
- * e.g. in a structure initializer (or where-ever else comma expressions
- * aren't permitted).
- */
-#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { sint32:-!!(e); }))
-
-/* &a[0] degrades to a pointer: a different type from an array */
-#define __must_be_array(a) \
-        BUILD_BUG_ON_ZERO(__builtin_types_compatible_p(typeof(a), typeof(&a[0])))
-
-// based on http://lxr.free-electrons.com/source/include/linux/kernel.h#L54
-#define countof(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
-#elif defined (_MSC_VER)
-#define countof(arr)            _countof(arr)
-#else
-#define countof(arr)            (sizeof(arr) / sizeof((arr)[0]))
-#endif // __GNUC__
-#endif // __cplusplus
 
 // Gets the name of a symbol as a C string
 #define nameof(symbol) #symbol
@@ -140,7 +95,7 @@ using colour_t = uint8;
 
 #endif // defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 
-#if !((defined (_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200809L) || (defined(_XOPEN_SOURCE) && _XOPEN_SOURCE >= 700))
+#if !((defined (_POSIX_C_SOURCE) && _POSIX_C_SOURCE >= 200809L) || (defined(_XOPEN_SOURCE) && _XOPEN_SOURCE >= 700) || (defined(__APPLE__) && defined(__MACH__)) || defined(__ANDROID_API__))
 char *strndup(const char *src, size_t size);
 #endif // !(POSIX_C_SOURCE >= 200809L || _XOPEN_SOURCE >= 700)
 
@@ -217,21 +172,10 @@ using rct_string_id           = uint16;
 // will be the only way to access a given memory region. In other words: there is no other pointer
 // aliasing the same memory area. Using it lets compiler generate better code. If your compiler
 // does not support it, feel free to drop it, at some performance hit.
-#ifdef __cplusplus
-    #ifdef _MSC_VER
-        #define RESTRICT __restrict
-    #else
-        #define RESTRICT __restrict__
-    #endif
+#ifdef _MSC_VER
+    #define RESTRICT __restrict
 #else
-    #ifdef _MSC_VER
-        #define RESTRICT __restrict
-    #else
-        #define RESTRICT restrict
-    #endif
-#endif
-#ifndef RESTRICT
-    #define RESTRICT
+    #define RESTRICT __restrict__
 #endif
 
 #define assert_struct_size(x, y) static_assert(sizeof(x) == (y), "Improper struct size")
@@ -250,17 +194,6 @@ using rct_string_id           = uint16;
 #else // PLATFORM_X86
     #define FASTCALL
 #endif // PLATFORM_X86
-
-// C++17 or later
-#if defined(__cplusplus) && __cplusplus > 201402L
-    #define UNUSED_ATTR [[maybe_unused]]
-#else
-    #ifdef __GNUC__
-        #define UNUSED_ATTR [[gnu::unused]]
-    #else
-        #define UNUSED_ATTR
-    #endif
-#endif
 
 /**
  * x86 register structure, only used for easy interop to RCT2 code.
@@ -314,7 +247,5 @@ struct registers {
 };
 assert_struct_size(registers, 7 * 4);
 #pragma pack(pop)
-
-#define UNUSED(x)  ((void)(x))
 
 #endif

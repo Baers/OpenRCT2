@@ -21,6 +21,8 @@
 #include <openrct2-ui/interface/Widget.h>
 #include <openrct2/util/Util.h>
 #include <openrct2-ui/interface/Dropdown.h>
+#include <openrct2/interface/Colour.h>
+#include <openrct2/drawing/Drawing.h>
 
 enum WINDOW_CUSTOM_CURRENCY_WIDGET_IDX {
     WIDX_BACKGROUND,
@@ -42,7 +44,7 @@ static rct_widget window_custom_currency_widgets[] = {
     { WWT_BUTTON,           1,  189,    199,    31,     35, STR_NUMERIC_UP,                     STR_NONE },
     { WWT_BUTTON,           1,  189,    199,    36,     40, STR_NUMERIC_DOWN,                   STR_NONE },
     { WWT_BUTTON,           1,  120,    200,    50,     60, 0,                                  STR_NONE },
-    { WWT_DROPDOWN,         1,  220,    350,    50,     60, STR_STRINGID,                       STR_NONE },
+    { WWT_DROPDOWN,         1,  220,    350,    50,     60, STR_NONE,                           STR_NONE },
     { WWT_BUTTON,           1,  339,    349,    51,     59, STR_DROPDOWN_GLYPH,                 STR_NONE },
     { WIDGETS_END },
 };
@@ -207,7 +209,7 @@ static void custom_currency_window_mouseup(rct_window *w, rct_widgetindex widget
     }
 }
 
-static void custom_currency_window_dropdown(rct_window *w, rct_widgetindex widgetIndex, sint32 dropdownIndex)
+static void custom_currency_window_dropdown([[maybe_unused]] rct_window * w, rct_widgetindex widgetIndex, sint32 dropdownIndex)
 {
     if(dropdownIndex == -1)
         return;
@@ -231,7 +233,7 @@ static void custom_currency_window_dropdown(rct_window *w, rct_widgetindex widge
     }
 }
 
-static void custom_currency_window_text_input(struct rct_window *w, rct_widgetindex widgetIndex, char *text)
+static void custom_currency_window_text_input([[maybe_unused]] struct rct_window * w, rct_widgetindex widgetIndex, char * text)
 {
     if (text == nullptr)
         return;

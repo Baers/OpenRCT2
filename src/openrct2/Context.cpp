@@ -15,6 +15,7 @@
 #pragma endregion
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <memory>
 #include <string>
@@ -33,7 +34,9 @@
 #include "core/MemoryStream.h"
 #include "core/Path.hpp"
 #include "core/String.hpp"
+#include "core/Util.hpp"
 #include "FileClassifier.h"
+#include "HandleParkLoad.h"
 #include "network/network.h"
 #include "object/ObjectManager.h"
 #include "object/ObjectRepository.h"
@@ -42,6 +45,7 @@
 #include "platform/Crash.h"
 #include "PlatformEnvironment.h"
 #include "ride/TrackDesignRepository.h"
+#include "scenario/Scenario.h"
 #include "scenario/ScenarioRepository.h"
 #include "title/TitleScreen.h"
 #include "title/TitleSequenceManager.h"
@@ -57,6 +61,7 @@
 #include "interface/Chat.h"
 #include "interface/Console.h"
 #include "interface/themes.h"
+#include "interface/Viewport.h"
 #include "Intro.h"
 #include "localisation/Date.h"
 #include "localisation/Language.h"
@@ -64,9 +69,7 @@
 #include "network/http.h"
 #include "network/network.h"
 #include "network/twitch.h"
-#include "object/ObjectList.h"
 #include "platform/platform.h"
-#include "rct1/RCT1.h"
 #include "util/Util.h"
 
 using namespace OpenRCT2;
@@ -91,6 +94,7 @@ namespace OpenRCT2
 #ifdef __ENABLE_DISCORD__
         DiscordService *            _discordService = nullptr;
 #endif
+        StdInOutConsole             _stdInOutConsole;
 
         // Game states
         TitleScreen * _titleScreen = nullptr;
@@ -123,7 +127,6 @@ namespace OpenRCT2
         ~Context() override
         {
             window_close_all();
-            network_close();
             http_dispose();
             language_close_all();
             object_manager_unload_all_objects();
@@ -163,6 +166,26 @@ namespace OpenRCT2
             return _env;
         }
 
+        IObjectManager * GetObjectManager() override
+        {
+            return _objectManager;
+        }
+
+        IObjectRepository * GetObjectRepository() override
+        {
+            return _objectRepository;
+        }
+
+        ITrackDesignRepository * GetTrackDesignRepository() override
+        {
+            return _trackDesignRepository;
+        }
+
+        IScenarioRepository * GetScenarioRepository() override
+        {
+            return _scenarioRepository;
+        }
+
         sint32 RunOpenRCT2(int argc, const char * * argv) override
         {
             if (Initialise())
@@ -170,6 +193,11 @@ namespace OpenRCT2
                 Launch();
             }
             return gExitCode;
+        }
+
+        void WriteLine(const std::string &s) override
+        {
+            _stdInOutConsole.WriteLine(s);
         }
 
         /**
@@ -246,8 +274,16 @@ namespace OpenRCT2
             std::string result;
             if (pathId == PATH_ID_CSS50)
             {
-                auto dataPath = _env->GetDirectoryPath(DIRBASE::RCT1, DIRID::DATA);
-                result = Path::Combine(dataPath, "css17.dat");
+                if (!(_env->GetDirectoryPath(DIRBASE::RCT1).empty()))
+                {
+                    auto dataPath = _env->GetDirectoryPath(DIRBASE::RCT1, DIRID::DATA);
+                    result = Path::Combine(dataPath, "css17.dat");
+                }
+                else
+                {
+                    auto dataPath = _env->GetDirectoryPath(DIRBASE::RCT2, DIRID::DATA);
+                    result = Path::Combine(dataPath, "css50.dat");
+                }
             }
             else if (pathId >= 0 && pathId < PATH_ID_END)
             {
@@ -293,12 +329,15 @@ namespace OpenRCT2
             //  return false;
             // } //This comment was relocated so it would stay where it was in relation to the following lines of code.
 
-            auto rct2InstallPath = GetOrPromptRCT2Path();
-            if (rct2InstallPath.empty())
+            if (!gOpenRCT2Headless)
             {
-                return false;
+                auto rct2InstallPath = GetOrPromptRCT2Path();
+                if (rct2InstallPath.empty())
+                {
+                    return false;
+                }
+                _env->SetBasePath(DIRBASE::RCT2, rct2InstallPath);
             }
-            _env->SetBasePath(DIRBASE::RCT2, rct2InstallPath);
 
             _objectRepository = CreateObjectRepository(_env);
             _objectManager = CreateObjectManager(_objectRepository);
@@ -364,7 +403,10 @@ namespace OpenRCT2
 
             if (!gOpenRCT2NoGraphics)
             {
-                LoadBaseGraphics();
+                if (!LoadBaseGraphics())
+                {
+                    return false;
+                }
 #ifdef __ENABLE_LIGHTFX__
                 lightfx_init();
 #endif
@@ -419,6 +461,9 @@ namespace OpenRCT2
                         if (result.Error == PARK_LOAD_ERROR_OK)
                         {
                             parkImporter->Import();
+                            String::Set(gScenarioSavePath, Util::CountOf(gScenarioSavePath), path.c_str());
+                            String::Set(gCurrentLoadedPath, Util::CountOf(gCurrentLoadedPath), path.c_str());
+                            gFirstTimeSaving = true;
                             game_fix_save_vars();
                             sprite_position_tween_reset();
                             gScreenAge = 0;
@@ -501,12 +546,16 @@ namespace OpenRCT2
             return result;
         }
 
-        void LoadBaseGraphics()
+        bool LoadBaseGraphics()
         {
-            gfx_load_g1(_env);
+            if (!gfx_load_g1(_env))
+            {
+                return false;
+            }
             gfx_load_g2();
             gfx_load_csg();
             font_sprite_initialise_characters();
+            return true;
         }
 
         /**
@@ -622,6 +671,11 @@ namespace OpenRCT2
             }
 #endif // DISABLE_NETWORK
 
+            // For now, only allow interactive console in headless mode
+            if (gOpenRCT2Headless)
+            {
+                _stdInOutConsole.Start();
+            }
             RunGameLoop();
         }
 
@@ -789,7 +843,8 @@ namespace OpenRCT2
 
             twitch_update();
             chat_update();
-            console_update();
+            _stdInOutConsole.ProcessEvalQueue();
+            _uiContext->Update();
         }
 
         /**
@@ -916,7 +971,7 @@ void context_setcurrentcursor(sint32 cursor)
 
 void context_update_cursor_scale()
 {
-    GetContext()->GetUiContext()->SetCursorScale(static_cast<uint8>(round(gConfigGeneral.window_scale)));
+    GetContext()->GetUiContext()->SetCursorScale(static_cast<uint8>(std::round(gConfigGeneral.window_scale)));
 }
 
 void context_hide_cursor()
@@ -939,8 +994,8 @@ void context_get_cursor_position_scaled(sint32 * x, sint32 * y)
     context_get_cursor_position(x, y);
 
     // Compensate for window scaling.
-    *x = (sint32)ceilf(*x / gConfigGeneral.window_scale);
-    *y = (sint32)ceilf(*y / gConfigGeneral.window_scale);
+    *x = (sint32)std::ceil(*x / gConfigGeneral.window_scale);
+    *y = (sint32)std::ceil(*y / gConfigGeneral.window_scale);
 }
 
 void context_set_cursor_position(sint32 x, sint32 y)
@@ -1149,7 +1204,7 @@ bool platform_place_string_on_clipboard(utf8* target)
 
 /**
  * This function is deprecated.
- * Use IPlatformEnvironment instad.
+ * Use IPlatformEnvironment instead.
  */
 void platform_get_user_directory(utf8 * outPath, const utf8 * subDirectory, size_t outSize)
 {
@@ -1164,7 +1219,7 @@ void platform_get_user_directory(utf8 * outPath, const utf8 * subDirectory, size
 
 /**
  * This function is deprecated.
- * Use IPlatformEnvironment instad.
+ * Use IPlatformEnvironment instead.
  */
 void platform_get_openrct_data_path(utf8 * outPath, size_t outSize)
 {
@@ -1172,5 +1227,3 @@ void platform_get_openrct_data_path(utf8 * outPath, size_t outSize)
     auto path = env->GetDirectoryPath(DIRBASE::OPENRCT2);
     String::Set(outPath, outSize, path.c_str());
 }
-
-

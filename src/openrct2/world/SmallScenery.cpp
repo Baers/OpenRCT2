@@ -15,6 +15,7 @@
 #pragma endregion
 
 #include "../Cheats.h"
+#include "../management/Finance.h"
 #include "../network/network.h"
 #include "../OpenRCT2.h"
 #include "../ride/TrackDesign.h"
@@ -23,6 +24,7 @@
 #include "Park.h"
 #include "Scenery.h"
 #include "SmallScenery.h"
+#include "MapAnimation.h"
 
 static money32 SmallSceneryRemove(sint16 x, sint16 y, uint8 baseHeight, uint8 quadrant, uint8 sceneryType, uint8 flags)
 {
@@ -441,7 +443,14 @@ static money32 SmallSceneryPlace(sint16 x,
  *
  *  rct2: 0x006E0E01
  */
-void game_command_remove_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_remove_scenery(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     *ebx = SmallSceneryRemove(
         *eax & 0xFFFF,
@@ -457,7 +466,14 @@ void game_command_remove_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* 
  *
  *  rct2: 0x006E0F26
  */
-void game_command_set_scenery_colour(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_set_scenery_colour(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    sint32 *                  ebp)
 {
     *ebx = SmallScenerySetColour(
         *eax & 0xFFFF,
@@ -546,7 +562,8 @@ sint32 map_place_non_scenery_clear_func(rct_tile_element** tile_element, sint32 
  *
  *  rct2: 0x006E08F4
  */
-void game_command_place_scenery(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_place_scenery(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     *ebx = SmallSceneryPlace(
         *eax & 0xFFFF,

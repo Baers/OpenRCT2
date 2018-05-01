@@ -17,6 +17,8 @@
 #include "../Game.h"
 #include "Station.h"
 #include "Track.h"
+#include "../scenario/Scenario.h"
+#include "../world/Sprite.h"
 
 static void ride_update_station_blocksection(Ride * ride, sint32 stationIndex);
 static void ride_update_station_bumpercar(Ride * ride, sint32 stationIndex);
@@ -328,7 +330,7 @@ rct_tile_element * ride_get_station_start_track_element(Ride * ride, sint32 stat
     return nullptr;
 }
 
-rct_tile_element * ride_get_station_exit_element(Ride * ride, sint32 x, sint32 y, sint32 z)
+rct_tile_element * ride_get_station_exit_element(sint32 x, sint32 y, sint32 z)
 {
     // Find the station track element
     rct_tile_element * tileElement = map_get_first_element_at(x, y);
@@ -346,7 +348,7 @@ sint8 ride_get_first_valid_station_exit(Ride * ride)
 {
     for (sint32 i = 0; i < MAX_STATIONS; i++)
     {
-        if (ride->exits[i].xy != RCT_XY8_UNDEFINED)
+        if (ride->exits[i].x != COORDS_NULL)
         {
             return i;
         }
@@ -378,62 +380,48 @@ sint8 ride_get_first_empty_station_start(const Ride * ride)
     return -1;
 }
 
-static TileCoordsXYZD ride_get_entrance_or_exit_location_of_station(
-        const uint8 rideIndex,
-        const uint8 stationIndex,
-        const uint8 entranceType)
+TileCoordsXYZD ride_get_entrance_location(const sint32 rideIndex, const sint32 stationIndex)
 {
     const Ride * ride = get_ride(rideIndex);
-    LocationXY8 tileLocation = {};
-
-    if (entranceType == ENTRANCE_TYPE_RIDE_ENTRANCE)
-    {
-        tileLocation = ride->entrances[stationIndex];
-    }
-    else
-    {
-        tileLocation = ride->exits[stationIndex];
-    }
-
-    // Normally, a station has at most one entrance and one exit, which are at the same height
-    // as the station. But in hacked parks, neither can be taken for granted. Import code ensures
-    // that the ride->entrances and ride->exits arrays will point to one of them. There is, however,
-    // an ever-so-slight chance two entrances/exits for the same station reside on the same tile.
-    // In cases like this, the one at station height will be considered the "true" one.
-    // If none exists at that height, newer ones take precedence.
-    rct_tile_element * tileElement = map_get_first_element_at(tileLocation.x, tileLocation.y);
-    TileCoordsXYZD retVal = { LOCATION_NULL, LOCATION_NULL, LOCATION_NULL, 0 };
-    const uint8 expectedHeight = ride->station_heights[stationIndex];
-
-    if (tileElement != nullptr && tileLocation.xy != RCT_XY8_UNDEFINED)
-    {
-        do
-        {
-            if (tile_element_get_type(tileElement) != TILE_ELEMENT_TYPE_ENTRANCE)
-                continue;
-            if (entrance_element_get_type(tileElement) != entranceType)
-                continue;
-            if (tile_element_get_ride_index(tileElement) != rideIndex)
-                continue;
-            if (tile_element_get_station(tileElement) != stationIndex)
-                continue;
-
-            retVal = { tileLocation.x, tileLocation.y, tileElement->base_height, (uint8)tile_element_get_direction(tileElement) };
-            if (tileElement->base_height == expectedHeight)
-                break;
-        }
-        while (!tile_element_is_last_for_tile(tileElement++));
-    }
-
-    return retVal;
+    return ride->entrances[stationIndex];
 }
 
-TileCoordsXYZD ride_get_entrance_location_of_station(const uint8 rideIndex, const uint8 stationIndex)
+TileCoordsXYZD ride_get_exit_location(const sint32 rideIndex, const sint32 stationIndex)
 {
-    return ride_get_entrance_or_exit_location_of_station(rideIndex, stationIndex, ENTRANCE_TYPE_RIDE_ENTRANCE);
+    const Ride * ride = get_ride(rideIndex);
+    return ride->exits[stationIndex];
 }
 
-TileCoordsXYZD ride_get_exit_location_of_station(const uint8 rideIndex, const uint8 stationIndex)
+TileCoordsXYZD ride_get_entrance_location(const Ride * ride, const sint32 stationIndex)
 {
-    return ride_get_entrance_or_exit_location_of_station(rideIndex, stationIndex, ENTRANCE_TYPE_RIDE_EXIT);
+    return ride->entrances[stationIndex];
+}
+
+TileCoordsXYZD ride_get_exit_location(const Ride * ride, const sint32 stationIndex)
+{
+    return ride->exits[stationIndex];
+}
+
+void ride_clear_entrance_location(
+        Ride * ride,
+        const sint32 stationIndex)
+{
+    ride->entrances[stationIndex].x = COORDS_NULL;
+}
+
+void ride_clear_exit_location(
+        Ride * ride,
+        const sint32 stationIndex)
+{
+    ride->exits[stationIndex].x = COORDS_NULL;
+}
+
+void ride_set_entrance_location(Ride * ride, const sint32 stationIndex, const TileCoordsXYZD location)
+{
+    ride->entrances[stationIndex] = location;
+}
+
+void ride_set_exit_location(Ride * ride, const sint32 stationIndex, const TileCoordsXYZD location)
+{
+    ride->exits[stationIndex] = location;
 }

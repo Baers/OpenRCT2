@@ -15,6 +15,7 @@
 #pragma endregion
 
 #include <algorithm>
+#include "../Context.h"
 #include "../core/Console.hpp"
 #include "../core/FileStream.hpp"
 #include "../core/IStream.hpp"
@@ -44,7 +45,9 @@
 #include "../ride/Ride.h"
 #include "../ride/RideRatings.h"
 #include "../scenario/Scenario.h"
+#include "../scenario/ScenarioRepository.h"
 #include "../util/SawyerCoding.h"
+#include "../util/Util.h"
 #include "../world/Climate.h"
 #include "../world/Entrance.h"
 #include "../world/MapAnimation.h"
@@ -198,6 +201,15 @@ public:
 
         // _s6.header
         gS6Info = _s6.info;
+
+        {
+            auto temp = rct2_to_utf8(_s6.info.name, RCT2_LANGUAGE_ID_ENGLISH_UK);
+            safe_strcpy(gS6Info.name, temp.data(), sizeof(gS6Info.name));
+        }
+        {
+            auto temp = rct2_to_utf8(_s6.info.details, RCT2_LANGUAGE_ID_ENGLISH_UK);
+            safe_strcpy(gS6Info.details, temp.data(), sizeof(gS6Info.details));
+        }
 
         gDateMonthsElapsed = _s6.elapsed_months;
         gDateMonthTicks    = _s6.current_day;
@@ -447,6 +459,7 @@ public:
         map_update_tile_pointers();
         game_convert_strings_to_utf8();
         map_count_remaining_land_rights();
+        determine_ride_entrance_and_exit_locations();
 
         // We try to fix the cycles on import, hence the 'true' parameter
         check_for_sprite_list_cycles(true);
@@ -517,8 +530,18 @@ public:
             dst->station_length[i] = src->station_length[i];
             dst->station_depart[i] = src->station_depart[i];
             dst->train_at_station[i] = src->train_at_station[i];
-            dst->entrances[i] = src->entrances[i];
-            dst->exits[i] = src->exits[i];
+            // Direction is fixed later.
+
+            if (src->entrances[i].xy == RCT_XY8_UNDEFINED)
+                ride_clear_entrance_location(dst, i);
+            else
+                ride_set_entrance_location(dst, i, { src->entrances[i].x, src->entrances[i].y, src->station_heights[i], 0 });
+
+            if (src->exits[i].xy == RCT_XY8_UNDEFINED)
+                ride_clear_exit_location(dst, i);
+            else
+                ride_set_exit_location(dst, i, { src->entrances[i].x, src->entrances[i].y, src->station_heights[i], 0 });
+
             dst->last_peep_in_queue[i] = src->last_peep_in_queue[i];
 
             dst->length[i] = src->length[i];
@@ -533,8 +556,8 @@ public:
         {
             dst->station_starts[i].xy = RCT_XY8_UNDEFINED;
             dst->train_at_station[i] = 255;
-            dst->entrances[i].xy = RCT_XY8_UNDEFINED;
-            dst->exits[i].xy = RCT_XY8_UNDEFINED;
+            ride_clear_entrance_location(dst, i);
+            ride_clear_exit_location(dst, i);
             dst->last_peep_in_queue[i] = SPRITE_INDEX_NULL;
         }
 
@@ -817,7 +840,8 @@ public:
         {
             if (sprite.unknown.sprite_identifier == SPRITE_IDENTIFIER_PEEP)
             {
-                if (sprite.peep.state == PEEP_STATE_ON_RIDE && sprite.peep.current_ride == rideIndex)
+                if (sprite.peep.current_ride == rideIndex &&
+                    (sprite.peep.state == PEEP_STATE_ON_RIDE || sprite.peep.state == PEEP_STATE_ENTERING_RIDE))
                 {
                     numRiders++;
                 }
@@ -835,7 +859,8 @@ IParkImporter * ParkImporter::CreateS6(IObjectRepository * objectRepository, IOb
 ParkLoadResult * load_from_sv6(const char * path)
 {
     ParkLoadResult * result = nullptr;
-    auto s6Importer = new S6Importer(GetObjectRepository(), GetObjectManager());
+    auto context = OpenRCT2::GetContext();
+    auto s6Importer = new S6Importer(context->GetObjectRepository(), context->GetObjectManager());
     try
     {
         result = new ParkLoadResult(s6Importer->LoadSavedGame(path));
@@ -887,7 +912,8 @@ ParkLoadResult * load_from_sv6(const char * path)
 ParkLoadResult * load_from_sc6(const char * path)
 {
     ParkLoadResult * result = nullptr;
-    auto s6Importer = new S6Importer(GetObjectRepository(), GetObjectManager());
+    auto context = OpenRCT2::GetContext();
+    auto s6Importer = new S6Importer(context->GetObjectRepository(), context->GetObjectManager());
     try
     {
         result = new ParkLoadResult(s6Importer->LoadScenario(path));
@@ -927,4 +953,3 @@ ParkLoadResult * load_from_sc6(const char * path)
     }
     return result;
 }
-

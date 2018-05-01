@@ -24,6 +24,7 @@
 
 #include "../platform/platform.h"
 #include "../util/SawyerCoding.h"
+#include "../world/Location.hpp"
 
 #include "network.h"
 
@@ -33,7 +34,7 @@
 // This string specifies which version of network stream current build uses.
 // It is used for making sure only compatible builds get connected, even within
 // single OpenRCT2 version.
-#define NETWORK_STREAM_VERSION "34"
+#define NETWORK_STREAM_VERSION "7"
 #define NETWORK_STREAM_ID OPENRCT2_VERSION "-" NETWORK_STREAM_VERSION
 
 static rct_peep* _pickup_peep = nullptr;
@@ -70,6 +71,7 @@ static sint32 _pickup_peep_old_x = LOCATION_NULL;
 #include "../scenario/Scenario.h"
 #include "../util/Util.h"
 #include "../Cheats.h"
+#include "../world/Park.h"
 
 #include "NetworkAction.h"
 
@@ -135,7 +137,9 @@ Network::Network()
 
 Network::~Network()
 {
-    Close();
+    CloseChatLog();
+    CloseServerLog();
+    CloseConnection();
 }
 
 void Network::SetEnvironment(IPlatformEnvironment * env)
@@ -163,52 +167,59 @@ bool Network::Init()
 
 void Network::Close()
 {
-    if (status == NETWORK_STATUS_NONE)
+    if (status != NETWORK_STATUS_NONE)
     {
-        // Already closed. This prevents a call in ~Network() to gfx_invalidate_screen()
-        // which may no longer be valid on Linux and would cause a segfault.
-        return;
-    }
+        // HACK Because Close() is closed all over the place, it sometimes gets called inside an Update
+        //      call. This then causes disposed data to be accessed. Therefore, save closing until the
+        //      end of the update loop.
+        if (_closeLock)
+        {
+            _requireClose = true;
+            return;
+        }
 
-    // HACK Because Close() is closed all over the place, it sometimes gets called inside an Update
-    //      call. This then causes disposed data to be accessed. Therefore, save closing until the
-    //      end of the update loop.
-    if (_closeLock) {
-        _requireClose = true;
-        return;
-    }
+        CloseChatLog();
+        CloseServerLog();
+        CloseConnection();
 
-    if (mode == NETWORK_MODE_CLIENT) {
+        client_connection_list.clear();
+        game_command_queue.clear();
+        player_list.clear();
+        group_list.clear();
+
+        gfx_invalidate_screen();
+
+        _requireClose = false;
+    }
+}
+
+void Network::CloseConnection()
+{
+    if (mode == NETWORK_MODE_CLIENT)
+    {
         delete server_connection->Socket;
         server_connection->Socket = nullptr;
-    } else if (mode == NETWORK_MODE_SERVER) {
+    }
+    else if (mode == NETWORK_MODE_SERVER)
+    {
         delete listening_socket;
         listening_socket = nullptr;
         delete _advertiser;
         _advertiser = nullptr;
     }
 
-    CloseChatLog();
-    CloseServerLog();
-
     mode = NETWORK_MODE_NONE;
     status = NETWORK_STATUS_NONE;
     _lastConnectStatus = SOCKET_STATUS_CLOSED;
-    server_connection->AuthStatus = NETWORK_AUTH_NONE;
-    server_connection->InboundPacket.Clear();
-    server_connection->SetLastDisconnectReason(nullptr);
-    SafeDelete(server_connection);
-
-    client_connection_list.clear();
-    game_command_queue.clear();
-    player_list.clear();
-    group_list.clear();
+    if (server_connection != nullptr)
+    {
+        server_connection->AuthStatus = NETWORK_AUTH_NONE;
+        server_connection->InboundPacket.Clear();
+        server_connection->SetLastDisconnectReason(nullptr);
+        delete server_connection;
+    }
 
     DisposeWSA();
-
-    gfx_invalidate_screen();
-
-    _requireClose = false;
 }
 
 bool Network::BeginClient(const char* host, uint16 port)
@@ -1095,7 +1106,8 @@ void Network::Server_Send_MAP(NetworkConnection* connection)
     } else {
         // This will send all custom objects to connected clients
         // TODO: fix it so custom objects negotiation is performed even in this case.
-        IObjectManager * objManager = GetObjectManager();
+        auto context = GetContext();
+        IObjectManager * objManager = context->GetObjectManager();
         objects = objManager->GetPackableObjects();
     }
 
@@ -1781,7 +1793,8 @@ void Network::Server_Client_Joined(const char* name, const std::string &keyhash,
         format_string(text, 256, STR_MULTIPLAYER_PLAYER_HAS_JOINED_THE_GAME, &player_name);
         chat_history_add(text);
 
-        IObjectManager * objManager = GetObjectManager();
+        auto context = GetContext();
+        IObjectManager * objManager = context->GetObjectManager();
         auto objects = objManager->GetPackableObjects();
         Server_Send_OBJECTS(connection, objects);
 
@@ -1802,7 +1815,7 @@ void Network::Server_Handle_TOKEN(NetworkConnection& connection, NetworkPacket& 
 
 void Network::Client_Handle_OBJECTS(NetworkConnection& connection, NetworkPacket& packet)
 {
-    IObjectRepository * repo = GetObjectRepository();
+    IObjectRepository * repo = GetContext()->GetObjectRepository();
     uint32 size;
     packet >> size;
     log_verbose("client received object list, it has %u entries", size);
@@ -1855,7 +1868,7 @@ void Network::Server_Handle_OBJECTS(NetworkConnection& connection, NetworkPacket
         return;
     }
     log_verbose("Client requested %u objects", size);
-    IObjectRepository * repo = GetObjectRepository();
+    IObjectRepository * repo = GetContext()->GetObjectRepository();
     for (uint32 i = 0; i < size; i++)
     {
         const char * name = (const char *)packet.Read(8);
@@ -2045,16 +2058,16 @@ bool Network::LoadMap(IStream * stream)
     bool result = false;
     try
     {
+        auto context = GetContext();
         auto importer = std::unique_ptr<IParkImporter>(
-            ParkImporter::CreateS6(GetObjectRepository(), GetObjectManager()));
+            ParkImporter::CreateS6(GetContext()->GetObjectRepository(), context->GetObjectManager()));
         importer->LoadFromStream(stream, false);
         importer->Import();
 
         sprite_position_tween_reset();
 
         // Read checksum
-        uint32 checksum = stream->ReadValue<uint32>();
-        UNUSED(checksum);
+        [[maybe_unused]] uint32 checksum = stream->ReadValue<uint32>();
 
         // Read other data not in normal save files
         stream->Read(gSpriteSpatialIndex, 0x10001 * sizeof(uint16));
@@ -2082,7 +2095,7 @@ bool Network::LoadMap(IStream * stream)
         gCheatsDisableRideValueAging = stream->ReadValue<uint8>() != 0;
         gConfigGeneral.show_real_names_of_guests = stream->ReadValue<uint8>() != 0;
         gCheatsIgnoreResearchStatus = stream->ReadValue<uint8>() != 0;
-        
+
         gLastAutoSaveUpdate = AUTOSAVE_PAUSE;
         result = true;
     }
@@ -2195,7 +2208,7 @@ void Network::Client_Handle_GAME_ACTION(NetworkConnection& connection, NetworkPa
 
     if (player_id == action->GetPlayer())
     {
-        // Only execute callbacks that belong to us, 
+        // Only execute callbacks that belong to us,
         // clients can have identical network ids assigned.
         auto itr = _gameActionCallbacks.find(action->GetNetworkId());
         if (itr != _gameActionCallbacks.end())
@@ -2748,7 +2761,14 @@ void network_chat_show_server_greeting()
     }
 }
 
-void game_command_set_player_group(sint32* eax, sint32* ebx, sint32* ecx, sint32* edx, sint32* esi, sint32* edi, sint32* ebp)
+void game_command_set_player_group(
+    [[maybe_unused]] sint32 * eax,
+    sint32 *                  ebx,
+    sint32 *                  ecx,
+    sint32 *                  edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     uint8 playerid = (uint8)*ecx;
     uint8 groupid = (uint8)*edx;
@@ -2807,7 +2827,8 @@ void game_command_set_player_group(sint32* eax, sint32* ebx, sint32* ecx, sint32
     *ebx = 0;
 }
 
-void game_command_modify_groups(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
+void game_command_modify_groups(
+    sint32 * eax, sint32 * ebx, sint32 * ecx, sint32 * edx, [[maybe_unused]] sint32 * esi, sint32 * edi, sint32 * ebp)
 {
     uint8 action = (uint8)*eax;
     uint8 groupid = (uint8)(*eax >> 8);
@@ -2995,7 +3016,14 @@ void game_command_modify_groups(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *e
     *ebx = 0;
 }
 
-void game_command_kick_player(sint32 *eax, sint32 *ebx, sint32 *ecx, sint32 *edx, sint32 *esi, sint32 *edi, sint32 *ebp)
+void game_command_kick_player(
+    sint32 *                  eax,
+    sint32 *                  ebx,
+    [[maybe_unused]] sint32 * ecx,
+    [[maybe_unused]] sint32 * edx,
+    [[maybe_unused]] sint32 * esi,
+    [[maybe_unused]] sint32 * edi,
+    [[maybe_unused]] sint32 * ebp)
 {
     uint8 playerid = (uint8)*eax;
     NetworkPlayer* player = gNetwork.GetPlayerByID(playerid);

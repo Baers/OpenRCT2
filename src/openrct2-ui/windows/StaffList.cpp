@@ -20,6 +20,7 @@
 #include <openrct2-ui/windows/Window.h>
 #include <openrct2/Context.h>
 
+#include <openrct2/actions/StaffSetColourAction.hpp>
 #include <openrct2/drawing/Drawing.h>
 #include <openrct2/Game.h>
 #include <openrct2/Input.h>
@@ -31,6 +32,9 @@
 #include <openrct2/util/Util.h>
 #include <openrct2/world/Footpath.h>
 #include <openrct2-ui/interface/Dropdown.h>
+#include <openrct2/world/Sprite.h>
+#include <openrct2/world/Park.h>
+#include <openrct2/management/Finance.h>
 
 enum {
     WINDOW_STAFF_LIST_TAB_HANDYMEN,
@@ -294,8 +298,10 @@ static void window_staff_list_mousedown(rct_window *w, rct_widgetindex widgetInd
 */
 static void window_staff_list_dropdown(rct_window *w, rct_widgetindex widgetIndex, sint32 dropdownIndex)
 {
-    if (widgetIndex == WIDX_STAFF_LIST_UNIFORM_COLOUR_PICKER && dropdownIndex != -1) {
-        update_staff_colour(_windowStaffListSelectedTab, dropdownIndex);
+    if (widgetIndex == WIDX_STAFF_LIST_UNIFORM_COLOUR_PICKER && dropdownIndex != -1)
+    {
+        auto action = StaffSetColourAction(_windowStaffListSelectedTab, dropdownIndex);
+        GameActions::Execute(&action);
     }
 }
 

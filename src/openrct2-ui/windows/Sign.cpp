@@ -27,6 +27,8 @@
 #include <openrct2/world/Wall.h>
 #include <openrct2-ui/interface/Dropdown.h>
 #include <openrct2/sprites.h>
+#include <openrct2/world/Banner.h>
+#include <openrct2/actions/SignSetNameAction.hpp>
 
 #define WW 113
 #define WH 96
@@ -247,7 +249,7 @@ static void window_sign_mouseup(rct_window *w, rct_widgetindex widgetIndex)
         }
         game_do_command(
             x,
-            1 | ((tile_element->type&0x3) << 8),
+            1 | ((tile_element->type & TILE_ELEMENT_DIRECTION_MASK) << 8),
             y,
             tile_element->base_height | (scenery_large_get_sequence(tile_element) << 8),
             GAME_COMMAND_REMOVE_LARGE_SCENERY,
@@ -315,10 +317,10 @@ static void window_sign_dropdown(rct_window *w, rct_widgetindex widgetIndex, sin
  */
 static void window_sign_textinput(rct_window *w, rct_widgetindex widgetIndex, char *text)
 {
-    if (widgetIndex == WIDX_SIGN_TEXT && text != nullptr) {
-        game_do_command(1, GAME_COMMAND_FLAG_APPLY, w->number, *((sint32*)(text + 0)), GAME_COMMAND_SET_SIGN_NAME, *((sint32*)(text + 8)), *((sint32*)(text + 4)));
-        game_do_command(2, GAME_COMMAND_FLAG_APPLY, w->number, *((sint32*)(text + 12)), GAME_COMMAND_SET_SIGN_NAME, *((sint32*)(text + 20)), *((sint32*)(text + 16)));
-        game_do_command(0, GAME_COMMAND_FLAG_APPLY, w->number, *((sint32*)(text + 24)), GAME_COMMAND_SET_SIGN_NAME, *((sint32*)(text + 32)), *((sint32*)(text + 28)));
+    if (widgetIndex == WIDX_SIGN_TEXT && text != nullptr)
+    {
+        auto signSetNameAction = SignSetNameAction(w->number, text);
+        GameActions::Execute(&signSetNameAction);
     }
 }
 
@@ -510,9 +512,9 @@ static void window_sign_small_mouseup(rct_window *w, rct_widgetindex widgetIndex
         gGameCommandErrorTitle = STR_CANT_REMOVE_THIS;
         game_do_command(
             x,
-            1 | ((tile_element->type & 0x3) << 8),
+            1 | ((tile_element->type & TILE_ELEMENT_DIRECTION_MASK) << 8),
             y,
-            (tile_element->base_height << 8) | (tile_element->type & 0x3),
+            (tile_element->base_height << 8) | (tile_element->type & TILE_ELEMENT_DIRECTION_MASK),
             GAME_COMMAND_REMOVE_WALL,
             0,
             0);

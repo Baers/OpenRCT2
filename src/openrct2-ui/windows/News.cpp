@@ -25,6 +25,7 @@
 #include <openrct2/peep/Staff.h>
 #include <openrct2/sprites.h>
 #include <openrct2-ui/interface/Widget.h>
+#include <openrct2/drawing/Drawing.h>
 
 enum WINDOW_NEWS_WIDGET_IDX {
     WIDX_BACKGROUND,
@@ -303,7 +304,7 @@ static void window_news_scrollpaint(rct_window *w, rct_drawpixelinfo *dpi, sint3
 
         // Date text
         set_format_arg(0, rct_string_id, DateDayNames[newsItem->Day - 1]);
-        set_format_arg(2, rct_string_id, DateGameMonthNames[(newsItem->MonthYear % 8)]);
+        set_format_arg(2, rct_string_id, DateGameMonthNames[date_get_month(newsItem->MonthYear)]);
         gfx_draw_string_left(dpi, STR_NEWS_DATE_FORMAT, gCommonFormatArgs, COLOUR_WHITE, 2, y);
 
         // Item text

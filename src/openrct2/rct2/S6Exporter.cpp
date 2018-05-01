@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include "../common.h"
+#include "../Context.h"
 #include "../core/FileStream.hpp"
 #include "../core/IStream.hpp"
 #include "../core/String.hpp"
@@ -52,6 +54,7 @@
 #include "../world/MapAnimation.h"
 #include "../world/Park.h"
 #include "../world/Sprite.h"
+#include "../ride/Station.h"
 
 S6Exporter::S6Exporter()
 {
@@ -104,7 +107,7 @@ void S6Exporter::Save(IStream * stream, bool isScenario)
     // 2: Write packed objects
     if (_s6.header.num_packed_objects > 0)
     {
-        IObjectRepository * objRepo = GetObjectRepository();
+        IObjectRepository * objRepo = OpenRCT2::GetContext()->GetObjectRepository();
         objRepo->WritePackedObjects(stream, ExportObjectsList);
     }
 
@@ -161,6 +164,14 @@ void S6Exporter::Export()
         log_error("Found %d disjoint null sprites", disjoint_sprites_count);
     }
     _s6.info = gS6Info;
+    {
+        auto temp = utf8_to_rct2(gS6Info.name);
+        safe_strcpy(_s6.info.name, temp.data(), sizeof(_s6.info.name));
+    }
+    {
+        auto temp = utf8_to_rct2(gS6Info.details);
+        safe_strcpy(_s6.info.details, temp.data(), sizeof(_s6.info.details));
+    }
     uint32 researchedTrackPiecesA[128];
     uint32 researchedTrackPiecesB[128];
 
@@ -485,8 +496,19 @@ void S6Exporter::ExportRide(rct2_ride * dst, const Ride * src)
         dst->station_length[i] = src->station_length[i];
         dst->station_depart[i] = src->station_depart[i];
         dst->train_at_station[i] = src->train_at_station[i];
-        dst->entrances[i] = src->entrances[i];
-        dst->exits[i] = src->exits[i];
+
+        TileCoordsXYZD entrance = ride_get_entrance_location(src, i);
+        if (entrance.isNull())
+            dst->entrances[i].xy = RCT_XY8_UNDEFINED;
+        else
+            dst->entrances[i] = { (uint8)entrance.x, (uint8)entrance.y };
+
+        TileCoordsXYZD exit = ride_get_exit_location(src, i);
+        if (exit.isNull())
+            dst->exits[i].xy = RCT_XY8_UNDEFINED;
+        else
+            dst->exits[i] = { (uint8)exit.x, (uint8)exit.y };
+
         dst->last_peep_in_queue[i] = src->last_peep_in_queue[i];
 
         dst->length[i] = src->length[i];
@@ -724,7 +746,8 @@ void S6Exporter::ExportResearchList()
     memcpy(_s6.research_items, gResearchItems, sizeof(_s6.research_items));
 }
 
-enum {
+enum : uint32
+{
     S6_SAVE_FLAG_EXPORT    = 1 << 0,
     S6_SAVE_FLAG_SCENARIO  = 1 << 1,
     S6_SAVE_FLAG_AUTOMATIC = 1u << 31,
@@ -760,7 +783,7 @@ sint32 scenario_save(const utf8 * path, sint32 flags)
     {
         if (flags & S6_SAVE_FLAG_EXPORT)
         {
-            IObjectManager * objManager   = GetObjectManager();
+            IObjectManager * objManager   = OpenRCT2::GetContext()->GetObjectManager();
             s6exporter->ExportObjectsList = objManager->GetPackableObjects();
         }
         s6exporter->RemoveTracklessRides = true;
@@ -788,4 +811,3 @@ sint32 scenario_save(const utf8 * path, sint32 flags)
     }
     return result;
 }
-

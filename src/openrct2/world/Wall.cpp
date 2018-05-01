@@ -21,10 +21,13 @@
 #include "../Cheats.h"
 #include "../Game.h"
 #include "../localisation/StringIds.h"
+#include "../management/Finance.h"
 #include "../ride/Track.h"
 #include "../ride/TrackData.h"
+#include "Banner.h"
 #include "LargeScenery.h"
 #include "Map.h"
+#include "MapAnimation.h"
 #include "Park.h"
 #include "Scenery.h"
 #include "SmallScenery.h"
@@ -61,10 +64,7 @@ static bool TrackIsAllowedWallEdges(uint8 rideType, uint8 trackType, uint8 track
  *  rct2: 0x006E5CBA
  */
 static bool WallCheckObstructionWithTrack(rct_scenery_entry * wall,
-                                          sint32 x,
-                                          sint32 y,
                                           sint32 z0,
-                                          sint32 z1,
                                           sint32 edge,
                                           rct_tile_element * trackElement,
                                           bool * wallAcrossTrack)
@@ -219,7 +219,7 @@ static bool WallCheckObstruction(rct_scenery_entry * wall,
             tile = &entry->large_scenery.tiles[sequence];
             {
                 sint32 direction = ((edge - tile_element_get_direction(tileElement)) & TILE_ELEMENT_DIRECTION_MASK) + 8;
-                if (!(tile->var_7 & (1 << direction)))
+                if (!(tile->flags & (1 << direction)))
                 {
                     map_obstruction_set_error_text(tileElement);
                     return false;
@@ -236,7 +236,7 @@ static bool WallCheckObstruction(rct_scenery_entry * wall,
             }
             break;
         case TILE_ELEMENT_TYPE_TRACK:
-            if (!WallCheckObstructionWithTrack(wall, x, y, z0, z1, edge, tileElement, wallAcrossTrack))
+            if (!WallCheckObstructionWithTrack(wall, z0, edge, tileElement, wallAcrossTrack))
             {
                 return false;
             }
@@ -812,7 +812,7 @@ void game_command_place_wall(sint32 * eax,
                              sint32 * ebx,
                              sint32 * ecx,
                              sint32 * edx,
-                             sint32 * esi,
+                             [[maybe_unused]] sint32 * esi,
                              sint32 * edi,
                              sint32 * ebp)
 {
@@ -858,9 +858,9 @@ void game_command_remove_wall(sint32 * eax,
                               sint32 * ebx,
                               sint32 * ecx,
                               sint32 * edx,
-                              sint32 * esi,
-                              sint32 * edi,
-                              sint32 * ebp)
+                              [[maybe_unused]] sint32 * esi,
+                              [[maybe_unused]] sint32 * edi,
+                              [[maybe_unused]] sint32 * ebp)
 {
     *ebx = WallRemove(
         *eax & 0xFFFF,
@@ -879,8 +879,8 @@ void game_command_set_wall_colour(sint32 * eax,
                                   sint32 * ebx,
                                   sint32 * ecx,
                                   sint32 * edx,
-                                  sint32 * esi,
-                                  sint32 * edi,
+                                  [[maybe_unused]] sint32 * esi,
+                                  [[maybe_unused]] sint32 * edi,
                                   sint32 * ebp)
 {
     *ebx = WallSetColour(
@@ -894,4 +894,3 @@ void game_command_set_wall_colour(sint32 * eax,
         *ebx & 0xFF
     );
 }
-
